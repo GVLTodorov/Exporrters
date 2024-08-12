@@ -20,7 +20,7 @@ dependencies = [
 app = "run_server:main"
 
 [project.urls]
-Homepage = "https://github.com/byumov/prometheus_humidifier_exporter"
+Homepage = "https://github.com/GVLTodorov/Exporrter"
 
 [build-system]
 requires = ["setuptools>=61.0"]
