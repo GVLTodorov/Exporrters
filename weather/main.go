@@ -50,7 +50,7 @@ func fetchWeatherData() {
 	for {
 		apiURL := fmt.Sprintf(
 			"https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&current=%s&timezone=%s",
-			*latitude, *longitude, *weatherFields, *timezone)
+			*latitude, *longitude, weatherFields, *timezone)
 
 		resp, err := http.Get(apiURL)
 		if err != nil {
@@ -89,7 +89,7 @@ func fetchAirQualityData() {
 	for {
 		apiURL := fmt.Sprintf(
 			"https://air-quality-api.open-meteo.com/v1/air-quality?latitude=%s&longitude=%s&current=%s&timezone=%s",
-			*latitude, *longitude, *airQualityFields, *timezone)
+			*latitude, *longitude, airQualityFields, *timezone)
 
 		resp, err := http.Get(apiURL)
 		if err != nil {
