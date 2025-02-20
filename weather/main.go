@@ -19,7 +19,7 @@ var (
 	latitude         = flag.String("latitude", "42.6975", "Latitude of location")
 	longitude        = flag.String("longitude", "23.3241", "Longitude of location")
 	timezone         = flag.String("timezone", "Europe/Sofia", "Timezone of location")
-	weatherFields    = flag.String("weather_fields", "temperature_2m,apparent_temperature", "Comma-separated list of weather fields")
+	weatherFields    = flag.String("weather_fields", "temperature_2m,apparent_temperature,relative_humidity_2m", "Comma-separated list of weather fields")
 	airQualityFields = flag.String("air_quality_fields", "european_aqi,us_aqi,pm10,pm2_5", "Comma-separated list of air quality fields")
 )
 
