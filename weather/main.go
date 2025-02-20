@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -19,8 +20,8 @@ var (
 	latitude         = flag.String("latitude", "42.6975", "Latitude of location")
 	longitude        = flag.String("longitude", "23.3241", "Longitude of location")
 	timezone         = flag.String("timezone", "Europe/Sofia", "Timezone of location")
-	weatherFields    = flag.String("weather_fields", "temperature_2m,apparent_temperature,relative_humidity_2m", "Comma-separated list of weather fields")
-	airQualityFields = flag.String("air_quality_fields", "european_aqi,us_aqi,pm10,pm2_5", "Comma-separated list of air quality fields")
+	weatherFields string
+	airQualityFields string
 )
 
 type MetricMap map[string]prometheus.Gauge
@@ -121,6 +122,22 @@ func fetchAirQualityData() {
 		log.Println("Air quality metrics updated.")
 		time.Sleep(30 * time.Second) // Update every 30 seconds
 	}
+}
+
+func init() {
+	// Read environment variables
+	weatherFields = os.Getenv("WEATHER_FIELDS")
+	if weatherFields == "" {
+		weatherFields = "temperature_2m,apparent_temperature,relative_humidity_2m"
+	}
+
+	airQualityFields = os.Getenv("AIR_QUALITY_FIELDS")
+	if airQualityFields == "" {
+		airQualityFields = "european_aqi,us_aqi,pm10,pm2_5"
+	}
+
+	fmt.Println("Weather Fields:", weatherFields)
+	fmt.Println("Air Quality Fields:", airQualityFields)
 }
 
 func main() {
