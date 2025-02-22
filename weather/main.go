@@ -45,8 +45,7 @@ func createOrUpdateMetric(metricMap MetricMap, prefix, name string, value float6
 	}
 }
 
-func fetchWeatherData() {
-	for {
+func getWeatherData() {
 		apiURL := fmt.Sprintf(
 			"https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&current=%s&timezone=%s",
 			latitude, longitude, weatherFields, timezone)
@@ -54,21 +53,17 @@ func fetchWeatherData() {
 		resp, err := http.Get(apiURL)
 		if err != nil {
 			log.Printf("Error fetching weather data: %v", err)
-			time.Sleep(10 * time.Second)
-			continue
 		}
 		defer resp.Body.Close()
 
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			log.Printf("Error reading response: %v", err)
-			continue
 		}
 
 		var data map[string]interface{}
 		if err := json.Unmarshal(body, &data); err != nil {
 			log.Printf("Error parsing JSON: %v", err)
-			continue
 		}
 
 		if current, exists := data["current"].(map[string]interface{}); exists {
@@ -80,12 +75,9 @@ func fetchWeatherData() {
 		}
 
 		log.Println("Weather metrics updated.")
-		time.Sleep(30 * time.Second) // Update every 30 seconds
-	}
 }
 
-func fetchAirQualityData() {
-	for {
+func getAirQualityData() {
 		apiURL := fmt.Sprintf(
 			"https://air-quality-api.open-meteo.com/v1/air-quality?latitude=%s&longitude=%s&current=%s&timezone=%s",
 			latitude, longitude, airQualityFields, timezone)
@@ -93,21 +85,17 @@ func fetchAirQualityData() {
 		resp, err := http.Get(apiURL)
 		if err != nil {
 			log.Printf("Error fetching air quality data: %v", err)
-			time.Sleep(10 * time.Second)
-			continue
 		}
 		defer resp.Body.Close()
 
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			log.Printf("Error reading response: %v", err)
-			continue
 		}
 
 		var data map[string]interface{}
 		if err := json.Unmarshal(body, &data); err != nil {
 			log.Printf("Error parsing JSON: %v", err)
-			continue
 		}
 
 		if current, exists := data["current"].(map[string]interface{}); exists {
@@ -119,8 +107,6 @@ func fetchAirQualityData() {
 		}
 
 		log.Println("Air quality metrics updated.")
-		time.Sleep(30 * time.Second) // Update every 30 seconds
-	}
 }
 
 func init() {
@@ -158,9 +144,19 @@ func init() {
 }
 
 func main() {
-	// Start fetching data in separate goroutines
-	go fetchWeatherData()
-	go fetchAirQualityData()
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop() // Stops the ticker when main exits
+	
+		for {
+			select {
+			case <-ticker.C:
+				fmt.Println("Fetching weather data...")
+				getWeatherData()
+				getAirQualityData()
+			}
+		}
+	}()
 
 	http.Handle("/metrics", promhttp.Handler())
 	log.Fatal(http.ListenAndServe(":8080", nil))
