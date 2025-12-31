@@ -5,7 +5,6 @@ A Prometheus exporter for stock prices using Polygon.io API.
 ## Features
 
 - Fetches stock prices from Polygon.io using bid/ask quotes
-- Calculates MID price = (bid + ask) / 2
 - Exposes metrics in Prometheus format on `/metrics` endpoint
 - Configurable stock symbols via environment variable
 
@@ -66,7 +65,7 @@ docker run -p 8080:8080 \
 
 **Or as a one-liner:**
 ```bash
-docker run -p 8080:8080 -e POLYGON_API_KEY="<your-polygon-api-key>" -e SYMBOLS="QCOM,NVDA,INTC" stockexporter
+docker run -p 8080:8080 -e POLYGON_API_KEY="g0########################" -e SYMBOLS="####,####,####" stockexporter
 ```
 
 ### Metrics
