@@ -11,6 +11,11 @@ import (
 	"strings"
 	"time"
 
+	// Embed the IANA timezone database in the binary so time.LoadLocation
+	// works on minimal base images (Alpine, scratch, distroless, …) that
+	// do not ship /usr/share/zoneinfo. Costs ~450 KB in the final binary.
+	_ "time/tzdata"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
