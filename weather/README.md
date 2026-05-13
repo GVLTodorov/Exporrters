@@ -29,7 +29,6 @@ curl http://localhost:9080/metrics
 ## docker-compose
 
 ```yaml
-services:
   weatherexporter:
     image: ghcr.io/gvltodorov/weatherexporrter:beta
     container_name: weatherexporter
@@ -40,6 +39,8 @@ services:
       - LATITUDE=42.6975
       - LONGITUDE=23.3241
       - TIMEZONE=Europe/Sofia
+    networks:
+       - diagnostic
 ```
 
 ## Configuration
