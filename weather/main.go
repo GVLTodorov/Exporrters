@@ -11,302 +11,328 @@ import (
 	"strings"
 	"time"
 
-	// Embed the IANA timezone database in the binary so time.LoadLocation
-	// works on minimal base images (Alpine, scratch, distroless, …) that
-	// do not ship /usr/share/zoneinfo. Costs ~450 KB in the final binary.
+	// Embed the IANA timezone database so time.LoadLocation works on minimal
+	// base images (Alpine, scratch, distroless) that don't ship zoneinfo.
 	_ "time/tzdata"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// API parameters
-var (
-	latitude            string
-	longitude           string
-	timezone            string
-	weatherFields       string
-	weatherHourlyFields string
-	airQualityFields    string
-	forecastHours       int
+// =============================================================================
+// Hard-coded Open-Meteo field sets. We always request the full superset; the
+// API silently drops fields not supported at the requested location.
+// =============================================================================
+
+const (
+	weatherCurrentFields = "" +
+		"temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature," +
+		"precipitation,rain,showers,snowfall,weather_code," +
+		"cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high," +
+		"pressure_msl,surface_pressure," +
+		"wind_speed_10m,wind_direction_10m,wind_gusts_10m," +
+		"is_day"
+
+	weatherHourlyFields = "" +
+		"temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature," +
+		"precipitation_probability,precipitation,rain,showers,snowfall,snow_depth," +
+		"weather_code,pressure_msl,surface_pressure," +
+		"cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high," +
+		"visibility,evapotranspiration,et0_fao_evapotranspiration,vapour_pressure_deficit," +
+		"wind_speed_10m,wind_speed_80m,wind_speed_120m,wind_speed_180m," +
+		"wind_direction_10m,wind_direction_80m,wind_direction_120m,wind_direction_180m," +
+		"wind_gusts_10m,uv_index,uv_index_clear_sky,sunshine_duration,is_day," +
+		"freezing_level_height,cape,lifted_index,convective_inhibition," +
+		"shortwave_radiation,direct_radiation,diffuse_radiation," +
+		"direct_normal_irradiance,terrestrial_radiation," +
+		"soil_temperature_0cm,soil_temperature_6cm,soil_temperature_18cm,soil_temperature_54cm," +
+		"soil_moisture_0_to_1cm,soil_moisture_1_to_3cm,soil_moisture_3_to_9cm," +
+		"soil_moisture_9_to_27cm,soil_moisture_27_to_81cm"
+
+	weatherDailyFields = "" +
+		"weather_code," +
+		"temperature_2m_max,temperature_2m_min," +
+		"apparent_temperature_max,apparent_temperature_min," +
+		"sunrise,sunset,daylight_duration,sunshine_duration," +
+		"uv_index_max,uv_index_clear_sky_max," +
+		"precipitation_sum,rain_sum,showers_sum,snowfall_sum," +
+		"precipitation_hours,precipitation_probability_max," +
+		"wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant," +
+		"shortwave_radiation_sum,et0_fao_evapotranspiration"
+
+	airQualityFields = "" +
+		"pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone," +
+		"aerosol_optical_depth,dust,ammonia," +
+		"alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen," +
+		"european_aqi,european_aqi_pm2_5,european_aqi_pm10," +
+		"european_aqi_nitrogen_dioxide,european_aqi_ozone,european_aqi_sulphur_dioxide," +
+		"us_aqi,us_aqi_pm2_5,us_aqi_pm10," +
+		"us_aqi_nitrogen_dioxide,us_aqi_carbon_monoxide,us_aqi_ozone,us_aqi_sulphur_dioxide," +
+		"uv_index,uv_index_clear_sky"
+
+	forecastHours = 48 // hourly horizon (bounded label cardinality)
+	forecastDays  = 7  // daily horizon
 )
 
-type MetricMap map[string]prometheus.Gauge
-type ForecastMetricMap map[string]*prometheus.GaugeVec
+// =============================================================================
+// Config + shared state
+// =============================================================================
 
-var weatherMetrics = make(MetricMap)
-var airQualityMetrics = make(MetricMap)
-var forecastMetrics = make(ForecastMetricMap)
+var (
+	latitude  string
+	longitude string
+	timezone  string
 
-// Shared HTTP client so a slow upstream cannot pile up goroutines / sockets.
-var httpClient = &http.Client{Timeout: 15 * time.Second}
+	// Resolved once at startup so we never re-parse the embedded tz database.
+	configuredLocation = time.UTC
 
-// configuredLocation is resolved once at startup so we do not re-parse the
-// embedded timezone database on every scrape. Falls back to UTC if the
-// TIMEZONE env var is invalid (warned about in init()).
-var configuredLocation *time.Location = time.UTC
+	// Shared HTTP client with a timeout to prevent goroutine / socket pile-up.
+	httpClient = &http.Client{Timeout: 15 * time.Second}
+)
 
-// maxBodyBytes caps the size of an upstream response we are willing to
-// allocate. Open-Meteo responses are well under 100 KB even for a 7-day
-// hourly forecast; 1 MiB is a generous safety ceiling that protects us if
-// DNS / a captive portal / a misconfigured proxy returns something huge.
+// Upper bound for an upstream response body so a runaway proxy / DNS detour /
+// captive portal can never blow up RAM. Real Open-Meteo bodies are ~50–100 KB.
 const maxBodyBytes = 1 << 20
 
-func createOrUpdateMetric(metricMap MetricMap, prefix, name string, value float64, help string) {
-	metricName := fmt.Sprintf("%s_%s", prefix, strings.ReplaceAll(name, ".", "_"))
-	metricName = strings.ToLower(metricName)
+// =============================================================================
+// Metric registries. Bounded by the (fixed) field lists above, and for labeled
+// metrics by forecastHours / forecastDays. Reset before each scrape so a
+// missing or null entry disappears instead of leaving stale data behind.
+// =============================================================================
 
-	if gauge, exists := metricMap[metricName]; exists {
-		gauge.Set(value)
-	} else {
-		newGauge := prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: metricName,
-			Help: help,
-		})
-		newGauge.Set(value)
-		prometheus.MustRegister(newGauge)
-		metricMap[metricName] = newGauge
-	}
+type ScalarMetricMap map[string]prometheus.Gauge
+type LabeledMetricMap map[string]*prometheus.GaugeVec
+
+var (
+	scalarMetrics  = make(ScalarMetricMap)
+	labeledMetrics = make(LabeledMetricMap)
+)
+
+func sanitize(name string) string {
+	return strings.ToLower(strings.ReplaceAll(name, ".", "_"))
 }
 
-// createOrUpdateForecastMetric registers (once) and updates a GaugeVec with a
-// single bounded label `hour_offset`. The set of series is fixed at
-// 0..forecastHours-1, so this cannot grow over time.
-func createOrUpdateForecastMetric(name string, hourOffset int, value float64, help string) {
-	metricName := strings.ToLower(strings.ReplaceAll(name, ".", "_"))
-	vec, exists := forecastMetrics[metricName]
-	if !exists {
+func setScalarMetric(name string, value float64, help string) {
+	metric := sanitize(name)
+	if g, ok := scalarMetrics[metric]; ok {
+		g.Set(value)
+		return
+	}
+	g := prometheus.NewGauge(prometheus.GaugeOpts{Name: metric, Help: help})
+	g.Set(value)
+	prometheus.MustRegister(g)
+	scalarMetrics[metric] = g
+}
+
+func setLabeledMetric(name, labelName string, index int, value float64, help string) {
+	metric := sanitize(name)
+	vec, ok := labeledMetrics[metric]
+	if !ok {
 		vec = prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{Name: metricName, Help: help},
-			[]string{"hour_offset"},
+			prometheus.GaugeOpts{Name: metric, Help: help},
+			[]string{labelName},
 		)
 		prometheus.MustRegister(vec)
-		forecastMetrics[metricName] = vec
+		labeledMetrics[metric] = vec
 	}
-	vec.WithLabelValues(strconv.Itoa(hourOffset)).Set(value)
+	vec.WithLabelValues(strconv.Itoa(index)).Set(value)
 }
 
-// resetForecastMetric clears all label values from the named forecast metric
-// if it is already registered. This is called once per scrape before the
-// metric is repopulated, so hours that the API returns as null (or omits)
-// do not keep showing a stale value from a previous scrape.
-func resetForecastMetric(name string) {
-	metricName := strings.ToLower(strings.ReplaceAll(name, ".", "_"))
-	if vec, exists := forecastMetrics[metricName]; exists {
+// resetLabeledMetric clears stale label values for a metric so that any
+// index the API doesn't provide this scrape disappears from /metrics
+// instead of keeping the previous scrape's value forever.
+func resetLabeledMetric(name string) {
+	metric := sanitize(name)
+	if vec, ok := labeledMetrics[metric]; ok {
 		vec.Reset()
 	}
 }
 
-func getWeatherData() {
-		// Build URL. Hourly forecast is only requested when configured.
-		apiURL := fmt.Sprintf(
-			"https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&current=%s&timezone=%s",
-			latitude, longitude, weatherFields, timezone)
-		if weatherHourlyFields != "" && forecastHours > 0 {
-			days := (forecastHours + 23) / 24
-			if days < 1 {
-				days = 1
-			}
-			if days > 7 {
-				days = 7
-			}
-			apiURL += fmt.Sprintf("&hourly=%s&forecast_days=%d", weatherHourlyFields, days)
-		}
+// parseOpenMeteoTime parses both the date-only ("2026-05-12") and
+// date-with-hour ("2026-05-12T15:04") formats Open-Meteo emits.
+func parseOpenMeteoTime(s string) (time.Time, bool) {
+	if t, err := time.ParseInLocation("2006-01-02T15:04", s, configuredLocation); err == nil {
+		return t, true
+	}
+	if t, err := time.ParseInLocation("2006-01-02", s, configuredLocation); err == nil {
+		return t, true
+	}
+	return time.Time{}, false
+}
 
-		resp, err := httpClient.Get(apiURL)
-		if err != nil {
-			log.Printf("Error fetching weather data: %v", err)
-			return
-		}
-		defer func() {
-			// Drain any trailing bytes (json.Decoder may stop mid-stream on
-			// error) so the connection can be reused, then close.
-			io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
-		}()
+// =============================================================================
+// Response processing
+// =============================================================================
 
-		var data map[string]interface{}
-		if err := json.NewDecoder(io.LimitReader(resp.Body, maxBodyBytes)).Decode(&data); err != nil {
-			log.Printf("Error parsing JSON: %v", err)
-			return
-		}
-
-		if current, exists := data["current"].(map[string]interface{}); exists {
-			for key, value := range current {
-				if numValue, ok := value.(float64); ok {
-					createOrUpdateMetric(weatherMetrics, "T", key, numValue, fmt.Sprintf("Current %s from Open-Meteo", key))
-				}
-			}
-		}
-
-		if hourly, exists := data["hourly"].(map[string]interface{}); exists && forecastHours > 0 {
-			times, _ := hourly["time"].([]interface{})
-
-			// Clear stale hour_offset slots before repopulating so that
-			// hours the API omits or returns as null disappear instead of
-			// keeping the previous scrape's value.
-			resetForecastMetric("t_forecast_time_seconds")
-			for i := 0; i < forecastHours && i < len(times); i++ {
-				ts, ok := times[i].(string)
-				if !ok {
-					continue
-				}
-				t, err := time.ParseInLocation("2006-01-02T15:04", ts, configuredLocation)
-				if err != nil {
-					continue
-				}
-				createOrUpdateForecastMetric(
-					"t_forecast_time_seconds", i, float64(t.Unix()),
-					"Forecast target time (unix seconds) for hour_offset",
+// processCurrentBlock emits one gauge per numeric field in data["current"].
+// String fields that look like ISO timestamps are emitted as "<name>_seconds".
+func processCurrentBlock(data map[string]interface{}, prefix, source string) {
+	block, ok := data["current"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	for key, value := range block {
+		switch v := value.(type) {
+		case float64:
+			setScalarMetric(
+				prefix+"_"+key, v,
+				fmt.Sprintf("Current %s from Open-Meteo %s", key, source),
+			)
+		case string:
+			if t, ok := parseOpenMeteoTime(v); ok {
+				setScalarMetric(
+					prefix+"_"+key+"_seconds", float64(t.Unix()),
+					fmt.Sprintf("Current %s (unix seconds) from Open-Meteo %s", key, source),
 				)
 			}
+		}
+	}
+}
 
-			for key, raw := range hourly {
-				if key == "time" {
-					continue
-				}
-				arr, ok := raw.([]interface{})
-				if !ok {
-					continue
-				}
-				limit := forecastHours
-				if len(arr) < limit {
-					limit = len(arr)
-				}
-				metric := "t_forecast_" + key
-				help := fmt.Sprintf("Hourly forecast %s from Open-Meteo", key)
+// processArrayBlock walks data[blockKey] (e.g. "hourly" or "daily") and emits
+// one GaugeVec per field, labeled by `labelName` ("hour_offset" / "day_offset").
+// Numeric entries go to "<prefix>_<field>"; ISO-time strings go to
+// "<prefix>_<field>_seconds". Up to `limit` entries are emitted per field.
+func processArrayBlock(data map[string]interface{}, blockKey, prefix, labelName, source string, limit int) {
+	block, ok := data[blockKey].(map[string]interface{})
+	if !ok {
+		return
+	}
+	for field, raw := range block {
+		arr, isArr := raw.([]interface{})
+		if !isArr {
+			continue
+		}
 
-				// Reset before repopulating; fields like precipitation_probability
-				// occasionally come back with null entries, and the old value would
-				// otherwise stay set for that hour_offset.
-				resetForecastMetric(metric)
+		metric := prefix + "_" + field
+		secondsMetric := metric + "_seconds"
 
-				populated := 0
-				for i := 0; i < limit; i++ {
-					num, ok := arr[i].(float64)
-					if !ok {
-						// null / unexpected type for this hour, leave the slot absent
-						continue
-					}
-					createOrUpdateForecastMetric(metric, i, num, help)
-					populated++
-				}
+		// Clear both potential targets so a value that disappears this
+		// scrape (null entry, shorter array, field dropped entirely) is
+		// reflected as a gap rather than a stale carry-over.
+		resetLabeledMetric(metric)
+		resetLabeledMetric(secondsMetric)
 
-				if populated == 0 {
-					log.Printf("Hourly field %q returned no usable values; metric will be absent this scrape", key)
+		help := fmt.Sprintf("%s %s from Open-Meteo %s", strings.Title(blockKey), field, source)
+		secondsHelp := fmt.Sprintf("%s %s (unix seconds) from Open-Meteo %s", strings.Title(blockKey), field, source)
+
+		end := limit
+		if len(arr) < end {
+			end = len(arr)
+		}
+		for i := 0; i < end; i++ {
+			switch v := arr[i].(type) {
+			case float64:
+				setLabeledMetric(metric, labelName, i, v, help)
+			case string:
+				if t, ok := parseOpenMeteoTime(v); ok {
+					setLabeledMetric(secondsMetric, labelName, i, float64(t.Unix()), secondsHelp)
 				}
 			}
 		}
+	}
+}
 
-		log.Println("Weather metrics updated.")
+func fetchJSON(url string) (map[string]interface{}, error) {
+	resp, err := httpClient.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		// Drain trailing bytes so the connection can be reused, then close.
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}()
+	var data map[string]interface{}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxBodyBytes)).Decode(&data); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+// =============================================================================
+// Fetchers
+// =============================================================================
+
+func getWeatherData() {
+	url := fmt.Sprintf(
+		"https://api.open-meteo.com/v1/forecast"+
+			"?latitude=%s&longitude=%s&timezone=%s"+
+			"&current=%s&hourly=%s&daily=%s"+
+			"&forecast_days=%d",
+		latitude, longitude, timezone,
+		weatherCurrentFields, weatherHourlyFields, weatherDailyFields,
+		forecastDays,
+	)
+	data, err := fetchJSON(url)
+	if err != nil {
+		log.Printf("Error fetching weather data: %v", err)
+		return
+	}
+	processCurrentBlock(data, "t", "Forecast API")
+	processArrayBlock(data, "hourly", "t_forecast", "hour_offset", "Forecast API", forecastHours)
+	processArrayBlock(data, "daily", "t_daily", "day_offset", "Forecast API", forecastDays)
+	log.Println("Weather metrics updated.")
 }
 
 func getAirQualityData() {
-		apiURL := fmt.Sprintf(
-			"https://air-quality-api.open-meteo.com/v1/air-quality?latitude=%s&longitude=%s&current=%s&timezone=%s",
-			latitude, longitude, airQualityFields, timezone)
-
-		resp, err := httpClient.Get(apiURL)
-		if err != nil {
-			log.Printf("Error fetching air quality data: %v", err)
-			return
-		}
-		defer func() {
-			io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
-		}()
-
-		var data map[string]interface{}
-		if err := json.NewDecoder(io.LimitReader(resp.Body, maxBodyBytes)).Decode(&data); err != nil {
-			log.Printf("Error parsing JSON: %v", err)
-			return
-		}
-
-		if current, exists := data["current"].(map[string]interface{}); exists {
-			for key, value := range current {
-				if numValue, ok := value.(float64); ok {
-					createOrUpdateMetric(airQualityMetrics, "A", key, numValue, fmt.Sprintf("Current %s from Open-Meteo Air Quality API", key))
-				}
-			}
-		}
-
-		log.Println("Air quality metrics updated.")
+	url := fmt.Sprintf(
+		"https://air-quality-api.open-meteo.com/v1/air-quality"+
+			"?latitude=%s&longitude=%s&timezone=%s"+
+			"&current=%s&hourly=%s"+
+			"&forecast_days=%d",
+		latitude, longitude, timezone,
+		airQualityFields, airQualityFields,
+		(forecastHours+23)/24,
+	)
+	data, err := fetchJSON(url)
+	if err != nil {
+		log.Printf("Error fetching air quality data: %v", err)
+		return
+	}
+	processCurrentBlock(data, "a", "Air Quality API")
+	processArrayBlock(data, "hourly", "a_forecast", "hour_offset", "Air Quality API", forecastHours)
+	log.Println("Air quality metrics updated.")
 }
 
+// =============================================================================
+// Bootstrap
+// =============================================================================
+
 func init() {
-	// Read environment variables
-	weatherFields = os.Getenv("WEATHER_FIELDS")
-	if weatherFields == "" {
-		weatherFields = "temperature_2m,apparent_temperature,relative_humidity_2m"
-	}
-
-	weatherHourlyFields = os.Getenv("WEATHER_HOURLY_FIELDS")
-	if weatherHourlyFields == "" {
-		weatherHourlyFields = "temperature_2m,apparent_temperature,precipitation_probability"
-	}
-
-	airQualityFields = os.Getenv("AIR_QUALITY_FIELDS")
-	if airQualityFields == "" {
-		airQualityFields = "european_aqi,us_aqi,pm10,pm2_5"
-	}
-
 	latitude = os.Getenv("LATITUDE")
 	if latitude == "" {
-		latitude = "42.6975" // Default value
+		latitude = "42.6975"
 	}
-
 	longitude = os.Getenv("LONGITUDE")
 	if longitude == "" {
-		longitude = "23.3241" // Default value
+		longitude = "23.3241"
 	}
-
 	timezone = os.Getenv("TIMEZONE")
 	if timezone == "" {
-		timezone = "Europe/Sofia" // Default value
+		timezone = "Europe/Sofia"
 	}
-
-	// Resolve and cache the timezone once, instead of re-loading it on every
-	// scrape from inside getWeatherData().
 	if loc, err := time.LoadLocation(timezone); err == nil {
 		configuredLocation = loc
 	} else {
-		log.Printf("Could not load TIMEZONE=%q: %v (forecast timestamps will use UTC)", timezone, err)
+		log.Printf("Could not load TIMEZONE=%q: %v (timestamps will use UTC)", timezone, err)
 	}
 
-	forecastHours = 24
-	if v := os.Getenv("FORECAST_HOURS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
-			// Hard cap so a misconfiguration cannot inflate label cardinality.
-			if n > 168 {
-				n = 168
-			}
-			forecastHours = n
-		} else {
-			log.Printf("Invalid FORECAST_HOURS=%q, falling back to %d", v, forecastHours)
-		}
-	}
-
-	fmt.Println("Weather Fields:", weatherFields)
-	fmt.Println("Weather Hourly Fields:", weatherHourlyFields)
-	fmt.Println("Forecast Hours:", forecastHours)
-	fmt.Println("Air Quality Fields:", airQualityFields)
 	fmt.Println("Latitude:", latitude)
 	fmt.Println("Longitude:", longitude)
 	fmt.Println("Timezone:", timezone)
+	fmt.Println("Forecast Hours:", forecastHours)
+	fmt.Println("Forecast Days:", forecastDays)
 }
 
 func main() {
 	go func() {
 		ticker := time.NewTicker(10 * time.Second)
-		defer ticker.Stop() // Stops the ticker when main exits
-	
-		for {
-			select {
-			case <-ticker.C:
-				fmt.Println("Fetching weather data...")
-				getWeatherData()
-				getAirQualityData()
-			}
+		defer ticker.Stop()
+		for range ticker.C {
+			fmt.Println("Fetching weather data...")
+			getWeatherData()
+			getAirQualityData()
 		}
 	}()
 
