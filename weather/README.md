@@ -3,7 +3,7 @@
 Prometheus exporter that pulls **everything** [Open-Meteo](https://open-meteo.com/en/docs) has for a single location and exposes it on `/metrics` — current weather, 48 h hourly forecast, 7-day daily forecast, and current + 48 h hourly air-quality forecast (including pollen and AQI breakdowns where available).
 
 - One scrape, ~4 000 series, bounded label cardinality, no growth over time.
-- Only **three** environment variables: `LATITUDE`, `LONGITUDE`, `TIMEZONE`.
+- Environment variables: `LATITUDE`, `LONGITUDE`, `TIMEZONE`, and optional `FETCH_INTERVAL`.
 - Fields that aren't available at your coordinates are simply absent (no fake zeros).
 
 > Full list of every metric, with units, ranges, weather-code lookup and AQI scales: **[metrics.md](./metrics.md)**.
@@ -17,6 +17,7 @@ docker run -d \
   -e LATITUDE=42.6975 \
   -e LONGITUDE=23.3241 \
   -e TIMEZONE=Europe/Sofia \
+  -e FETCH_INTERVAL=10m \
   ghcr.io/gvltodorov/weatherexporrter:beta
 ```
 
@@ -39,17 +40,20 @@ curl http://localhost:9080/metrics
       - LATITUDE=42.6975
       - LONGITUDE=23.3241
       - TIMEZONE=Europe/Sofia
+      # How often to refresh from Open-Meteo (Go duration: 10m, 90s, 1h). Omit for default 10m.
+      - FETCH_INTERVAL=10m
     networks:
        - diagnostic
 ```
 
 ## Configuration
 
-| Variable    | Default        | Description                                                                 |
-|-------------|----------------|-----------------------------------------------------------------------------|
-| `LATITUDE`  | `42.6975`      | Latitude in decimal degrees.                                                |
-| `LONGITUDE` | `23.3241`      | Longitude in decimal degrees.                                               |
-| `TIMEZONE`  | `Europe/Sofia` | IANA timezone. Used so hourly/daily forecast timestamps line up with local. |
+| Variable          | Default        | Description                                                                 |
+|-------------------|----------------|-----------------------------------------------------------------------------|
+| `LATITUDE`        | `42.6975`      | Latitude in decimal degrees.                                                |
+| `LONGITUDE`       | `23.3241`      | Longitude in decimal degrees.                                               |
+| `TIMEZONE`        | `Europe/Sofia` | IANA timezone. Used so hourly/daily forecast timestamps line up with local. |
+| `FETCH_INTERVAL`  | `10m`          | How often to pull Open-Meteo (Go `time.ParseDuration`, e.g. `10m`, `90s`, `1h`). Invalid or empty uses `10m`. |
 
 That's the entire knob surface. The set of Open-Meteo fields requested is hard-coded in the binary to a comprehensive superset; whichever fields the API actually returns for your coordinates become Prometheus metrics on the next scrape.
 

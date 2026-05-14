@@ -233,18 +233,28 @@ func processArrayBlock(data map[string]interface{}, blockKey, prefix, labelName,
 	}
 }
 
-func fetchJSON(url string) (map[string]interface{}, error) {
+// fetchJSON performs a GET and decodes JSON. label identifies the request in logs (e.g. Docker).
+func fetchJSON(label, url string) (map[string]interface{}, error) {
 	resp, err := httpClient.Get(url)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		// Drain trailing bytes so the connection can be reused, then close.
-		io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
-	}()
+	defer resp.Body.Close()
+
+	log.Printf("%s: HTTP %d %s", label, resp.StatusCode, resp.Status)
+
+	if resp.StatusCode != http.StatusOK {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
+	}
+
+	limited := io.LimitReader(resp.Body, maxBodyBytes)
 	var data map[string]interface{}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxBodyBytes)).Decode(&data); err != nil {
+	if err := json.NewDecoder(limited).Decode(&data); err != nil {
+		return nil, err
+	}
+	// Drain up to the same byte cap so the transport can reuse the connection safely.
+	if _, err := io.Copy(io.Discard, limited); err != nil {
 		return nil, err
 	}
 	return data, nil
@@ -264,7 +274,7 @@ func getWeatherData() {
 		weatherCurrentFields, weatherHourlyFields, weatherDailyFields,
 		forecastDays,
 	)
-	data, err := fetchJSON(url)
+	data, err := fetchJSON("forecast", url)
 	if err != nil {
 		log.Printf("Error fetching weather data: %v", err)
 		return
@@ -285,7 +295,7 @@ func getAirQualityData() {
 		airQualityFields, airQualityFields,
 		(forecastHours+23)/24,
 	)
-	data, err := fetchJSON(url)
+	data, err := fetchJSON("air-quality", url)
 	if err != nil {
 		log.Printf("Error fetching air quality data: %v", err)
 		return
@@ -326,13 +336,28 @@ func init() {
 }
 
 func main() {
+	fetchEvery := 10 * time.Minute
+	if s := os.Getenv("FETCH_INTERVAL"); s != "" {
+		d, err := time.ParseDuration(s)
+		if err != nil || d <= 0 {
+			log.Printf("Invalid FETCH_INTERVAL=%q (%v); using default %v", s, err, fetchEvery)
+		} else {
+			fetchEvery = d
+		}
+	}
+	log.Printf("Refreshing Open-Meteo data every %v", fetchEvery)
+
 	go func() {
-		ticker := time.NewTicker(10 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			fmt.Println("Fetching weather data...")
+		refresh := func() {
+			log.Println("Fetching weather and air-quality data...")
 			getWeatherData()
 			getAirQualityData()
+		}
+		refresh()
+		ticker := time.NewTicker(fetchEvery)
+		defer ticker.Stop()
+		for range ticker.C {
+			refresh()
 		}
 	}()
 
