@@ -237,13 +237,14 @@ func processArrayBlock(data map[string]interface{}, blockKey, prefix, labelName,
 
 // fetchJSON performs a GET and decodes JSON. label identifies the request in logs (e.g. Docker).
 func fetchJSON(label, url string) (map[string]interface{}, error) {
+	log.Printf("%s: sending HTTP GET", label)
 	resp, err := httpClient.Get(url)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	log.Printf("%s: HTTP %d %s", label, resp.StatusCode, resp.Status)
+	log.Printf("%s: HTTP response %d %s", label, resp.StatusCode, resp.Status)
 
 	if resp.StatusCode != http.StatusOK {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
@@ -267,6 +268,7 @@ func fetchJSON(label, url string) (map[string]interface{}, error) {
 // =============================================================================
 
 func getWeatherData() {
+	log.Println("forecast: updating metrics from Open-Meteo forecast API")
 	url := fmt.Sprintf(
 		"https://api.open-meteo.com/v1/forecast"+
 			"?latitude=%s&longitude=%s&timezone=%s"+
@@ -288,6 +290,7 @@ func getWeatherData() {
 }
 
 func getAirQualityData() {
+	log.Println("air-quality: updating metrics from Open-Meteo air quality API")
 	url := fmt.Sprintf(
 		"https://air-quality-api.open-meteo.com/v1/air-quality"+
 			"?latitude=%s&longitude=%s&timezone=%s"+
@@ -353,7 +356,6 @@ func init() {
 func main() {
 	go func() {
 		refresh := func() {
-			log.Println("Fetching weather and air-quality data...")
 			getWeatherData()
 			getAirQualityData()
 		}
