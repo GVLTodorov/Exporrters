@@ -79,9 +79,11 @@ const (
 // =============================================================================
 
 var (
-	latitude  string
-	longitude string
-	timezone  string
+	latitude      string
+	longitude     string
+	timezone      string
+	fetchInterval string
+	fetchEvery    time.Duration
 
 	// Resolved once at startup so we never re-parse the embedded tz database.
 	configuredLocation = time.UTC
@@ -328,25 +330,26 @@ func init() {
 		log.Printf("Could not load TIMEZONE=%q: %v (timestamps will use UTC)", timezone, err)
 	}
 
+	fetchInterval = os.Getenv("FETCH_INTERVAL")
+	if fetchInterval == "" {
+		fetchInterval = "10m"
+	}
+	fetchEvery, err := time.ParseDuration(fetchInterval)
+	if err != nil || fetchEvery <= 0 {
+		log.Printf("Invalid FETCH_INTERVAL=%q (%v); using 10m", fetchInterval, err)
+		fetchInterval = "10m"
+		fetchEvery = 10 * time.Minute
+	}
+
 	fmt.Println("Latitude:", latitude)
 	fmt.Println("Longitude:", longitude)
 	fmt.Println("Timezone:", timezone)
 	fmt.Println("Forecast Hours:", forecastHours)
 	fmt.Println("Forecast Days:", forecastDays)
+	fmt.Println("Fetch interval:", fetchInterval)
 }
 
 func main() {
-	fetchEvery := 10 * time.Minute
-	if s := os.Getenv("FETCH_INTERVAL"); s != "" {
-		d, err := time.ParseDuration(s)
-		if err != nil || d <= 0 {
-			log.Printf("Invalid FETCH_INTERVAL=%q (%v); using default %v", s, err, fetchEvery)
-		} else {
-			fetchEvery = d
-		}
-	}
-	log.Printf("Refreshing Open-Meteo data every %v", fetchEvery)
-
 	go func() {
 		refresh := func() {
 			log.Println("Fetching weather and air-quality data...")
