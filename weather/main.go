@@ -334,7 +334,8 @@ func init() {
 	if fetchInterval == "" {
 		fetchInterval = "10m"
 	}
-	fetchEvery, err := time.ParseDuration(fetchInterval)
+	var err error
+	fetchEvery, err = time.ParseDuration(fetchInterval)
 	if err != nil || fetchEvery <= 0 {
 		log.Printf("Invalid FETCH_INTERVAL=%q (%v); using 10m", fetchInterval, err)
 		fetchInterval = "10m"
