@@ -103,7 +103,7 @@ go vet ./...
 go test ./... -v -cover
 ```
 
-Tests stub the RouterOS API's `Run(sentence ...string) (*Reply, error)` call, so no real router or wire-protocol simulation is required to run the suite.
+Tests stub the RouterOS API's `Run(sentence ...string) (*Reply, error)` call, so no real router is required for most of the suite. `leak_test.go` is the exception: it runs `collectOnce`'s real dial/query/Close lifecycle against an in-process fake router (speaking just enough of the wire protocol to log in and ack commands) for 200 cycles, and fails if any connection or goroutine is left behind — `go.uber.org/goleak` backs the whole package via `TestMain`.
 
 ## Releases
 
