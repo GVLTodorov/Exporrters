@@ -1,245 +1,184 @@
 package main
 
 import (
-	"bytes"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
+	"net"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
+
+	ros "github.com/go-routeros/routeros/v3"
 )
 
-// Client talks to a single RouterOS device over its REST API
-// (https://help.mikrotik.com/docs/spaces/ROS/pages/47579162/REST+API).
+// Client dials a single RouterOS device's classic binary API
+// (https://help.mikrotik.com/docs/spaces/ROS/pages/8978457/API) — not the
+// REST API, which requires the www/www-ssl service to be enabled and is off
+// by default on most home routers, including the one this project targets.
 type Client struct {
-	baseURL    string
-	user       string
-	password   string
-	httpClient *http.Client
+	host               string
+	port               string
+	user               string
+	password           string
+	useTLS             bool
+	insecureSkipVerify bool
+	timeout            time.Duration
 }
 
-// newClient builds a Client for cfg.Address using cfg's scheme/TLS settings.
 func newClient(cfg Config) *Client {
-	scheme := "https"
-	if !cfg.UseHTTPS {
-		scheme = "http"
-	}
-	transport := &http.Transport{}
-	if cfg.InsecureSkipVerify {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // opt-in for home-router self-signed certs
-	}
-	return newClientWithBaseURL(
-		fmt.Sprintf("%s://%s", scheme, cfg.Address),
-		cfg.User, cfg.Password,
-		&http.Client{Timeout: cfg.RequestTimeout, Transport: transport},
-	)
-}
-
-// newClientWithBaseURL is the lower-level constructor used directly by tests
-// (pointed at an httptest.Server, so no TLS involved).
-func newClientWithBaseURL(baseURL, user, password string, httpClient *http.Client) *Client {
 	return &Client{
-		baseURL:    strings.TrimSuffix(baseURL, "/"),
-		user:       user,
-		password:   password,
-		httpClient: httpClient,
+		host:               cfg.Address,
+		port:               cfg.APIPort,
+		user:               cfg.User,
+		password:           cfg.Password,
+		useTLS:             cfg.UseTLS,
+		insecureSkipVerify: cfg.InsecureSkipVerify,
+		timeout:            cfg.RequestTimeout,
 	}
 }
 
-// maxBodyBytes bounds how much of a response we ever read, so a misbehaving
-// endpoint can't blow up memory.
-const maxBodyBytes = 4 << 20
-
-// do performs an HTTP request against the REST API and returns the raw body,
-// after checking for a non-2xx status.
-func (c *Client) do(method, path string, body []byte) ([]byte, error) {
-	url := c.baseURL + "/rest/" + strings.TrimPrefix(path, "/")
-
-	var reqBody io.Reader
-	if body != nil {
-		reqBody = bytes.NewReader(body)
-	}
-	req, err := http.NewRequest(method, url, reqBody)
-	if err != nil {
-		return nil, err
-	}
-	req.SetBasicAuth(c.user, c.password)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	limited := io.LimitReader(resp.Body, maxBodyBytes)
-	respBody, err := io.ReadAll(limited)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("HTTP %d from %s: %s", resp.StatusCode, url, strings.TrimSpace(string(respBody)))
-	}
-	return respBody, nil
+// runner is the subset of *ros.Client this file depends on, so tests can
+// substitute a stub that returns canned sentences without speaking the real
+// wire protocol.
+type runner interface {
+	Run(sentence ...string) (*ros.Reply, error)
 }
 
-// decodeOneOrMany decodes body as a single JSON object of type T, falling
-// back to a one-element JSON array of T. RouterOS REST is inconsistent about
-// whether a "singleton" endpoint (e.g. system/resource) or a print reply is
-// wrapped in an array across versions, so both shapes are accepted.
-func decodeOneOrMany[T any](body []byte) (T, error) {
-	var one T
-	if err := json.Unmarshal(body, &one); err == nil {
-		return one, nil
+// dial opens one connection and logs in. Callers must Close() it.
+func (c *Client) dial() (*ros.Client, error) {
+	addr := net.JoinHostPort(c.host, c.port)
+	if c.useTLS {
+		return ros.DialTLSTimeout(addr, c.user, c.password, &tls.Config{InsecureSkipVerify: c.insecureSkipVerify}, c.timeout) //nolint:gosec // opt-in for home-router self-signed certs
 	}
-	var many []T
-	if err := json.Unmarshal(body, &many); err != nil {
-		var zero T
-		return zero, fmt.Errorf("decoding response: %w", err)
-	}
-	if len(many) == 0 {
-		var zero T
-		return zero, fmt.Errorf("empty response")
-	}
-	return many[0], nil
+	return ros.DialTimeout(addr, c.user, c.password, c.timeout)
 }
 
-// flexString accepts a RouterOS REST field encoded as a JSON string, number,
-// or boolean and stores it as plain text, since RouterOS has changed the
-// encoding of numeric fields across versions.
-type flexString string
-
-func (f *flexString) UnmarshalJSON(b []byte) error {
-	if len(b) == 0 || string(b) == "null" {
-		return nil
-	}
-	if b[0] == '"' {
-		var s string
-		if err := json.Unmarshal(b, &s); err != nil {
-			return err
-		}
-		*f = flexString(s)
-		return nil
-	}
-	*f = flexString(b)
-	return nil
-}
-
-func (f flexString) String() string {
-	return string(f)
-}
-
-func (f flexString) Float() float64 {
-	v, _ := strconv.ParseFloat(string(f), 64)
-	return v
-}
-
-func (f flexString) Bool() bool {
-	s := string(f)
-	return s == "true" || s == "yes"
-}
-
-// SystemResource mirrors the fields of GET /rest/system/resource we use.
+// SystemResource mirrors the /system/resource print fields we use.
 type SystemResource struct {
-	CPULoad       flexString `json:"cpu-load"`
-	FreeMemory    flexString `json:"free-memory"`
-	TotalMemory   flexString `json:"total-memory"`
-	FreeHDDSpace  flexString `json:"free-hdd-space"`
-	TotalHDDSpace flexString `json:"total-hdd-space"`
-	Uptime        flexString `json:"uptime"`
-	Version       flexString `json:"version"`
-	BoardName     flexString `json:"board-name"`
+	CPULoad       string
+	FreeMemory    string
+	TotalMemory   string
+	FreeHDDSpace  string
+	TotalHDDSpace string
+	Uptime        string
+	Version       string
+	BoardName     string
 }
 
-// SystemResource fetches GET /rest/system/resource.
-func (c *Client) SystemResource() (SystemResource, error) {
-	body, err := c.do(http.MethodGet, "system/resource", nil)
+func fetchSystemResource(c runner) (SystemResource, error) {
+	reply, err := c.Run("/system/resource/print")
 	if err != nil {
 		return SystemResource{}, err
 	}
-	return decodeOneOrMany[SystemResource](body)
+	if len(reply.Re) == 0 {
+		return SystemResource{}, fmt.Errorf("empty /system/resource/print reply")
+	}
+	m := reply.Re[0].Map
+	return SystemResource{
+		CPULoad:       m["cpu-load"],
+		FreeMemory:    m["free-memory"],
+		TotalMemory:   m["total-memory"],
+		FreeHDDSpace:  m["free-hdd-space"],
+		TotalHDDSpace: m["total-hdd-space"],
+		Uptime:        m["uptime"],
+		Version:       m["version"],
+		BoardName:     m["board-name"],
+	}, nil
 }
 
-// Interface mirrors the fields of GET /rest/interface we use.
+// Interface mirrors the /interface print fields we use.
 type Interface struct {
-	Name     flexString `json:"name"`
-	Running  flexString `json:"running"`
-	Disabled flexString `json:"disabled"`
-	RxByte   flexString `json:"rx-byte"`
-	TxByte   flexString `json:"tx-byte"`
-	RxPacket flexString `json:"rx-packet"`
-	TxPacket flexString `json:"tx-packet"`
-	RxError  flexString `json:"rx-error"`
-	TxError  flexString `json:"tx-error"`
-	RxDrop   flexString `json:"rx-drop"`
-	TxDrop   flexString `json:"tx-drop"`
+	Name     string
+	Running  string
+	Disabled string
+	RxByte   string
+	TxByte   string
+	RxPacket string
+	TxPacket string
+	RxError  string
+	TxError  string
+	RxDrop   string
+	TxDrop   string
 }
 
-// Interfaces fetches GET /rest/interface — the live interface list, so
-// callers never need to hardcode names like ether1/bridge/wireguard/wifi1.
-func (c *Client) Interfaces() ([]Interface, error) {
-	body, err := c.do(http.MethodGet, "interface", nil)
+// fetchInterfaces reads the live interface list, so callers never need to
+// hardcode names like ether1/bridge/wireguard/wifi1.
+func fetchInterfaces(c runner) ([]Interface, error) {
+	reply, err := c.Run("/interface/print")
 	if err != nil {
 		return nil, err
 	}
-	var ifaces []Interface
-	if err := json.Unmarshal(body, &ifaces); err != nil {
-		return nil, fmt.Errorf("decoding interface list: %w", err)
+	ifaces := make([]Interface, 0, len(reply.Re))
+	for _, sen := range reply.Re {
+		m := sen.Map
+		ifaces = append(ifaces, Interface{
+			Name:     m["name"],
+			Running:  m["running"],
+			Disabled: m["disabled"],
+			RxByte:   m["rx-byte"],
+			TxByte:   m["tx-byte"],
+			RxPacket: m["rx-packet"],
+			TxPacket: m["tx-packet"],
+			RxError:  m["rx-error"],
+			TxError:  m["tx-error"],
+			RxDrop:   m["rx-drop"],
+			TxDrop:   m["tx-drop"],
+		})
 	}
 	return ifaces, nil
 }
 
-// countOnlyReply is the shape of a `print count-only` REST response, e.g.
-// {"ret":"33"}.
-type countOnlyReply struct {
-	Ret flexString `json:"ret"`
-}
-
-// printCountOnly POSTs {path}/print with count-only:true and an optional
-// .query filter, and returns the count. This deliberately never dumps the
-// full table — important for /ip/firewall/connection, whose conntrack table
-// can be large on a busy router.
-func (c *Client) printCountOnly(path string, query []string) (int, error) {
-	reqBody := map[string]any{"count-only": true}
-	if len(query) > 0 {
-		reqBody[".query"] = query
+// countOnly runs {path}/print with a `?filter` query and the count-only
+// flag, and returns the count. This deliberately never dumps the full
+// table — important for /ip/firewall/connection, whose conntrack table can
+// be large on a busy router.
+func countOnly(c runner, path string, filter string) (int, error) {
+	sentence := []string{path + "/print"}
+	if filter != "" {
+		sentence = append(sentence, "?"+filter)
 	}
-	payload, err := json.Marshal(reqBody)
+	sentence = append(sentence, "=count-only=")
+
+	reply, err := c.Run(sentence...)
 	if err != nil {
 		return 0, err
 	}
 
-	body, err := c.do(http.MethodPost, path+"/print", payload)
-	if err != nil {
-		return 0, err
+	var ret string
+	switch {
+	case len(reply.Re) > 0:
+		ret = reply.Re[0].Map["ret"]
+	case reply.Done != nil:
+		ret = reply.Done.Map["ret"]
 	}
-	reply, err := decodeOneOrMany[countOnlyReply](body)
-	if err != nil {
-		return 0, err
+	if ret == "" {
+		return 0, fmt.Errorf("no ret in count-only reply from %s", path)
 	}
-	n, err := strconv.Atoi(strings.TrimSpace(reply.Ret.String()))
+	n, err := strconv.Atoi(ret)
 	if err != nil {
-		return 0, fmt.Errorf("parsing count %q: %w", reply.Ret, err)
+		return 0, fmt.Errorf("parsing count %q from %s: %w", ret, path, err)
 	}
 	return n, nil
 }
 
-// DHCPBoundLeaseCount returns the number of DHCP leases with status=bound.
-func (c *Client) DHCPBoundLeaseCount() (int, error) {
-	return c.printCountOnly("ip/dhcp-server/lease", []string{"status=bound"})
+// fetchDHCPBoundLeaseCount returns the number of DHCP leases with status=bound.
+func fetchDHCPBoundLeaseCount(c runner) (int, error) {
+	return countOnly(c, "/ip/dhcp-server/lease", "status=bound")
 }
 
-// ConnectionCount returns the number of active /ip/firewall/connection
+// fetchConnectionCount returns the number of active /ip/firewall/connection
 // entries for the given protocol ("tcp" or "udp").
-func (c *Client) ConnectionCount(protocol string) (int, error) {
-	return c.printCountOnly("ip/firewall/connection", []string{"protocol=" + protocol})
+func fetchConnectionCount(c runner, protocol string) (int, error) {
+	return countOnly(c, "/ip/firewall/connection", "protocol="+protocol)
+}
+
+func parseFloat(s string) float64 {
+	v, _ := strconv.ParseFloat(s, 64)
+	return v
+}
+
+func parseBool(s string) bool {
+	return s == "true" || s == "yes"
 }
 
 // uptimePattern matches RouterOS's "1w2d3h4m5s"-style uptime duration

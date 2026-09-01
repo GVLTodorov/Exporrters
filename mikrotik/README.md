@@ -1,6 +1,8 @@
 # MikrotikExporrter
 
-Prometheus exporter for a single RouterOS device, over the [RouterOS 7 REST API](https://help.mikrotik.com/docs/spaces/ROS/pages/47579162/REST+API). Built to close two gaps neither `nshttpd/mikrotik-exporter` nor `swoga/mikrotik-exporter` covers: active TCP/UDP connection counts and board-name mapping — see [requirements.md](./requirements.md) for the full background.
+Prometheus exporter for a single RouterOS device, over RouterOS's classic binary API (port `8728`/`8729`), via [go-routeros/routeros](https://github.com/go-routeros/routeros). Built to close two gaps neither `nshttpd/mikrotik-exporter` nor `swoga/mikrotik-exporter` covers: active TCP/UDP connection counts and board-name mapping — see [requirements.md](./requirements.md) for the full background.
+
+The REST API was the original plan, but the target router only has the classic `api` service enabled (`www`/`www-ssl` — required for REST — are off by default on most home routers), so this exporter speaks the same binary protocol as the currently-deployed `nshttpd/mikrotik-exporter`.
 
 - One target, one `/metrics` endpoint — no `targets:` list, no YAML config.
 - Interface list is read from the router every scrape, not hardcoded.
@@ -38,9 +40,6 @@ curl http://localhost:9081/metrics
       - MIKROTIK_ADDRESS=192.168.1.1
       - MIKROTIK_USER=prometheus
       - MIKROTIK_PASSWORD=changeme
-      # Router uses a self-signed cert by default; set to "false" once you've
-      # installed a trusted one.
-      - MIKROTIK_INSECURE_SKIP_VERIFY=true
       - FETCH_INTERVAL=15s
     networks:
       - diagnostic
@@ -50,21 +49,24 @@ curl http://localhost:9081/metrics
 
 | Variable                        | Default        | Description                                                                 |
 |----------------------------------|----------------|-------------------------------------------------------------------------------|
-| `MIKROTIK_ADDRESS`               | *(required)*   | Router hostname or IP, no scheme (e.g. `192.168.1.1`).                       |
+| `MIKROTIK_ADDRESS`               | *(required)*   | Router hostname or IP, no port (e.g. `192.168.1.1`).                         |
 | `MIKROTIK_PASSWORD`               | *(required)*   | Password for `MIKROTIK_USER`.                                                |
 | `MIKROTIK_USER`                  | `prometheus`   | RouterOS user with (at minimum) read access to `system`, `interface`, `ip dhcp-server`, `ip firewall`. |
-| `MIKROTIK_USE_HTTPS`             | `true`         | Use `https://` instead of `http://` to reach the REST API.                   |
-| `MIKROTIK_INSECURE_SKIP_VERIFY`  | `true`         | Skip TLS certificate verification (RouterOS ships a self-signed cert by default). |
+| `MIKROTIK_API_PORT`              | `8728` (`8729` if `MIKROTIK_USE_TLS=true`) | RouterOS API port.                              |
+| `MIKROTIK_USE_TLS`               | `false`        | Use the encrypted `api-ssl` service instead of plaintext `api`.              |
+| `MIKROTIK_INSECURE_SKIP_VERIFY`  | `true`         | Skip TLS certificate verification when `MIKROTIK_USE_TLS=true` (RouterOS ships a self-signed cert by default). |
 | `LISTEN_PORT`                    | `8080`         | Port the `/metrics` endpoint listens on.                                     |
 | `FETCH_INTERVAL`                 | `15s`          | How often to poll the router (Go duration, e.g. `15s`, `30s`, `1m`).          |
-| `MIKROTIK_TIMEOUT`               | `10s`          | HTTP timeout per request to the router.                                      |
+| `MIKROTIK_TIMEOUT`               | `10s`          | Connect + per-request timeout to the router.                                 |
 
-RouterOS setup: enable the `www-ssl` service (`/ip/service/enable www-ssl`) and create a read-only API user, e.g.:
+RouterOS setup: the classic `api` service is enabled by default (`/ip/service/print` to check). Create a read-only API user, e.g.:
 
 ```
 /user group add name=prometheus-ro policy=read,api,rest-api
 /user add name=prometheus password=changeme group=prometheus-ro
 ```
+
+Plaintext `api` (port 8728) sends credentials unencrypted on the LAN — the same tradeoff the currently-deployed `nshttpd` exporter already makes. Set `MIKROTIK_USE_TLS=true` and enable the `api-ssl` service (`/ip/service/enable api-ssl`) for encrypted transport.
 
 ## Exposed metrics
 
@@ -101,7 +103,7 @@ go vet ./...
 go test ./... -v -cover
 ```
 
-Tests mock the RouterOS REST API with `httptest`, so no real router is required to run the suite.
+Tests stub the RouterOS API's `Run(sentence ...string) (*Reply, error)` call, so no real router or wire-protocol simulation is required to run the suite.
 
 ## Releases
 

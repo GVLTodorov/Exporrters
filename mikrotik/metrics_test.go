@@ -1,12 +1,12 @@
 package main
 
 import (
-	"io"
-	"net/http"
-	"net/http/httptest"
-	"strings"
+	"errors"
+	"fmt"
 	"testing"
 
+	ros "github.com/go-routeros/routeros/v3"
+	"github.com/go-routeros/routeros/v3/proto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
@@ -83,49 +83,49 @@ func TestApplyInterfacesRunningAndDisabled(t *testing.T) {
 	}
 }
 
-// fakeRouterServer wires up all four REST endpoints collectOnce depends on,
-// so behavior can be verified end-to-end without a real router.
-func fakeRouterServer(t *testing.T, dhcpFails bool) *Client {
-	t.Helper()
-	mux := http.NewServeMux()
-	mux.HandleFunc("/rest/system/resource", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"cpu-load":"7","free-memory":"111","total-memory":"222",
-			"free-hdd-space":"333","total-hdd-space":"444","uptime":"5m","version":"7.23.3","board-name":"hAP ax^3"}`))
-	})
-	mux.HandleFunc("/rest/interface", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`[{"name":"ether1","running":"true","disabled":"false"}]`))
-	})
-	mux.HandleFunc("/rest/ip/dhcp-server/lease/print", func(w http.ResponseWriter, r *http.Request) {
-		if dhcpFails {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ret":"9"}`))
-	})
-	mux.HandleFunc("/rest/ip/firewall/connection/print", func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case strings.Contains(string(body), "protocol=tcp"):
-			_, _ = w.Write([]byte(`{"ret":"5"}`))
-		case strings.Contains(string(body), "protocol=udp"):
-			_, _ = w.Write([]byte(`{"ret":"2"}`))
-		default:
-			w.WriteHeader(http.StatusBadRequest)
-		}
-	})
-
-	server := httptest.NewServer(mux)
-	t.Cleanup(server.Close)
-	return newClientWithBaseURL(server.URL, "prometheus", "secret", server.Client())
+// fakeRouter wires up canned replies for every command collect() depends
+// on, so behavior can be verified end-to-end without a real router
+// connection. Its Run method inspects the full sentence (not just the
+// command word) so it can distinguish the tcp/udp connection-count calls,
+// which share a command word but differ in their ?protocol= filter.
+type fakeRouter struct {
+	dhcpFails bool
 }
 
-func TestCollectOnceSuccess(t *testing.T) {
-	client := fakeRouterServer(t, false)
-	collectOnce(client)
+func (f *fakeRouter) Run(words ...string) (*ros.Reply, error) {
+	switch words[0] {
+	case "/system/resource/print":
+		return &ros.Reply{Re: []*proto.Sentence{sentence(map[string]string{
+			"cpu-load": "7", "free-memory": "111", "total-memory": "222",
+			"free-hdd-space": "333", "total-hdd-space": "444",
+			"uptime": "5m", "version": "7.23.3", "board-name": "hAP ax^3",
+		})}}, nil
+	case "/interface/print":
+		return &ros.Reply{Re: []*proto.Sentence{sentence(map[string]string{
+			"name": "ether1", "running": "true", "disabled": "false",
+		})}}, nil
+	case "/ip/dhcp-server/lease/print":
+		if f.dhcpFails {
+			return nil, errors.New("timeout")
+		}
+		return &ros.Reply{Re: []*proto.Sentence{sentence(map[string]string{"ret": "9"})}}, nil
+	case "/ip/firewall/connection/print":
+		for _, word := range words {
+			if word == "?protocol=tcp" {
+				return &ros.Reply{Re: []*proto.Sentence{sentence(map[string]string{"ret": "5"})}}, nil
+			}
+			if word == "?protocol=udp" {
+				return &ros.Reply{Re: []*proto.Sentence{sentence(map[string]string{"ret": "2"})}}, nil
+			}
+		}
+		return nil, fmt.Errorf("unexpected sentence: %v", words)
+	default:
+		return nil, fmt.Errorf("unexpected command: %v", words)
+	}
+}
+
+func TestCollectSuccess(t *testing.T) {
+	collect(&fakeRouter{})
 
 	if got := testutil.ToFloat64(up); got != 1 {
 		t.Errorf("up = %v, want 1", got)
@@ -144,9 +144,8 @@ func TestCollectOnceSuccess(t *testing.T) {
 	}
 }
 
-func TestCollectOncePartialFailureMarksDown(t *testing.T) {
-	client := fakeRouterServer(t, true)
-	collectOnce(client)
+func TestCollectPartialFailureMarksDown(t *testing.T) {
+	collect(&fakeRouter{dhcpFails: true})
 
 	if got := testutil.ToFloat64(up); got != 0 {
 		t.Errorf("up = %v, want 0 when the DHCP lease query fails", got)

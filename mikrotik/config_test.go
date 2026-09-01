@@ -11,7 +11,7 @@ func clearMikrotikEnv(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{
 		"MIKROTIK_ADDRESS", "MIKROTIK_USER", "MIKROTIK_PASSWORD",
-		"MIKROTIK_USE_HTTPS", "MIKROTIK_INSECURE_SKIP_VERIFY",
+		"MIKROTIK_API_PORT", "MIKROTIK_USE_TLS", "MIKROTIK_INSECURE_SKIP_VERIFY",
 		"LISTEN_PORT", "FETCH_INTERVAL", "MIKROTIK_TIMEOUT",
 	} {
 		t.Setenv(name, "")
@@ -52,8 +52,11 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.ListenPort != "8080" {
 		t.Errorf("ListenPort = %q, want %q", cfg.ListenPort, "8080")
 	}
-	if !cfg.UseHTTPS {
-		t.Error("UseHTTPS = false, want true (default)")
+	if cfg.APIPort != "8728" {
+		t.Errorf("APIPort = %q, want %q (default plaintext api)", cfg.APIPort, "8728")
+	}
+	if cfg.UseTLS {
+		t.Error("UseTLS = true, want false (default)")
 	}
 	if !cfg.InsecureSkipVerify {
 		t.Error("InsecureSkipVerify = false, want true (default)")
@@ -71,7 +74,7 @@ func TestLoadConfigOverrides(t *testing.T) {
 	t.Setenv("MIKROTIK_ADDRESS", "10.0.0.1")
 	t.Setenv("MIKROTIK_PASSWORD", "secret")
 	t.Setenv("MIKROTIK_USER", "admin")
-	t.Setenv("MIKROTIK_USE_HTTPS", "false")
+	t.Setenv("MIKROTIK_USE_TLS", "true")
 	t.Setenv("MIKROTIK_INSECURE_SKIP_VERIFY", "false")
 	t.Setenv("LISTEN_PORT", "9090")
 	t.Setenv("FETCH_INTERVAL", "30s")
@@ -85,8 +88,11 @@ func TestLoadConfigOverrides(t *testing.T) {
 	if cfg.User != "admin" {
 		t.Errorf("User = %q, want %q", cfg.User, "admin")
 	}
-	if cfg.UseHTTPS {
-		t.Error("UseHTTPS = true, want false")
+	if !cfg.UseTLS {
+		t.Error("UseTLS = false, want true")
+	}
+	if cfg.APIPort != "8729" {
+		t.Errorf("APIPort = %q, want %q (default api-ssl when UseTLS)", cfg.APIPort, "8729")
 	}
 	if cfg.InsecureSkipVerify {
 		t.Error("InsecureSkipVerify = true, want false")
@@ -99,6 +105,21 @@ func TestLoadConfigOverrides(t *testing.T) {
 	}
 	if cfg.RequestTimeout != 5*time.Second {
 		t.Errorf("RequestTimeout = %v, want %v", cfg.RequestTimeout, 5*time.Second)
+	}
+}
+
+func TestLoadConfigExplicitAPIPortOverridesTLSDefault(t *testing.T) {
+	clearMikrotikEnv(t)
+	t.Setenv("MIKROTIK_ADDRESS", "10.0.0.1")
+	t.Setenv("MIKROTIK_PASSWORD", "secret")
+	t.Setenv("MIKROTIK_API_PORT", "12345")
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.APIPort != "12345" {
+		t.Errorf("APIPort = %q, want %q", cfg.APIPort, "12345")
 	}
 }
 

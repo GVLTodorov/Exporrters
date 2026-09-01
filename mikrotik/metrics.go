@@ -113,20 +113,20 @@ func registerMetrics() {
 
 // applySystemResource maps a SystemResource reply onto the scalar gauges.
 func applySystemResource(r SystemResource) {
-	cpuLoadPercent.Set(r.CPULoad.Float())
-	memoryFreeBytes.Set(r.FreeMemory.Float())
-	memoryTotalBytes.Set(r.TotalMemory.Float())
-	storageFreeBytes.Set(r.FreeHDDSpace.Float())
-	storageTotalBytes.Set(r.TotalHDDSpace.Float())
+	cpuLoadPercent.Set(parseFloat(r.CPULoad))
+	memoryFreeBytes.Set(parseFloat(r.FreeMemory))
+	memoryTotalBytes.Set(parseFloat(r.TotalMemory))
+	storageFreeBytes.Set(parseFloat(r.FreeHDDSpace))
+	storageTotalBytes.Set(parseFloat(r.TotalHDDSpace))
 
-	if seconds, ok := parseUptime(r.Uptime.String()); ok {
+	if seconds, ok := parseUptime(r.Uptime); ok {
 		uptimeSeconds.Set(seconds)
 	} else {
 		log.Printf("Could not parse uptime %q", r.Uptime)
 	}
 
 	boardInfo.Reset()
-	boardInfo.WithLabelValues(r.BoardName.String(), r.Version.String()).Set(1)
+	boardInfo.WithLabelValues(r.BoardName, r.Version).Set(1)
 }
 
 // applyInterfaces maps the live interface list onto the per-interface
@@ -146,18 +146,18 @@ func applyInterfaces(ifaces []Interface) {
 	interfaceEnabled.Reset()
 
 	for _, iface := range ifaces {
-		name := iface.Name.String()
-		interfaceRxBytesTotal.WithLabelValues(name).Set(iface.RxByte.Float())
-		interfaceTxBytesTotal.WithLabelValues(name).Set(iface.TxByte.Float())
-		interfaceRxPacketsTotal.WithLabelValues(name).Set(iface.RxPacket.Float())
-		interfaceTxPacketsTotal.WithLabelValues(name).Set(iface.TxPacket.Float())
-		interfaceRxErrorsTotal.WithLabelValues(name).Set(iface.RxError.Float())
-		interfaceTxErrorsTotal.WithLabelValues(name).Set(iface.TxError.Float())
-		interfaceRxDropsTotal.WithLabelValues(name).Set(iface.RxDrop.Float())
-		interfaceTxDropsTotal.WithLabelValues(name).Set(iface.TxDrop.Float())
+		name := iface.Name
+		interfaceRxBytesTotal.WithLabelValues(name).Set(parseFloat(iface.RxByte))
+		interfaceTxBytesTotal.WithLabelValues(name).Set(parseFloat(iface.TxByte))
+		interfaceRxPacketsTotal.WithLabelValues(name).Set(parseFloat(iface.RxPacket))
+		interfaceTxPacketsTotal.WithLabelValues(name).Set(parseFloat(iface.TxPacket))
+		interfaceRxErrorsTotal.WithLabelValues(name).Set(parseFloat(iface.RxError))
+		interfaceTxErrorsTotal.WithLabelValues(name).Set(parseFloat(iface.TxError))
+		interfaceRxDropsTotal.WithLabelValues(name).Set(parseFloat(iface.RxDrop))
+		interfaceTxDropsTotal.WithLabelValues(name).Set(parseFloat(iface.TxDrop))
 
-		interfaceUp.WithLabelValues(name).Set(boolToFloat(iface.Running.Bool()))
-		interfaceEnabled.WithLabelValues(name).Set(boolToFloat(!iface.Disabled.Bool()))
+		interfaceUp.WithLabelValues(name).Set(boolToFloat(parseBool(iface.Running)))
+		interfaceEnabled.WithLabelValues(name).Set(boolToFloat(!parseBool(iface.Disabled)))
 	}
 }
 
@@ -168,28 +168,43 @@ func boolToFloat(b bool) float64 {
 	return 0
 }
 
-// collectOnce polls the router once and updates every metric. mikrotik_up
-// reflects whether every call this round succeeded, so a partial failure
-// (e.g. connection-tracking query times out) is still visible even though
-// the other metrics keep their last-known values.
+// collectOnce opens one connection to the router and hands it to collect.
 func collectOnce(client *Client) {
+	conn, err := client.dial()
+	if err != nil {
+		log.Printf("connect: %v", err)
+		up.Set(0)
+		return
+	}
+	defer conn.Close()
+
+	collect(conn)
+}
+
+// collect runs every query over an already-connected runner and updates
+// every metric. mikrotik_up reflects whether every call this round
+// succeeded, so a partial failure (e.g. connection-tracking query times
+// out) is still visible even though the other metrics keep their
+// last-known values. Split out from collectOnce so it can be unit tested
+// against a stub runner instead of a real router connection.
+func collect(conn runner) {
 	ok := true
 
-	if res, err := client.SystemResource(); err != nil {
+	if res, err := fetchSystemResource(conn); err != nil {
 		log.Printf("system resource: %v", err)
 		ok = false
 	} else {
 		applySystemResource(res)
 	}
 
-	if ifaces, err := client.Interfaces(); err != nil {
+	if ifaces, err := fetchInterfaces(conn); err != nil {
 		log.Printf("interfaces: %v", err)
 		ok = false
 	} else {
 		applyInterfaces(ifaces)
 	}
 
-	if n, err := client.DHCPBoundLeaseCount(); err != nil {
+	if n, err := fetchDHCPBoundLeaseCount(conn); err != nil {
 		log.Printf("dhcp lease count: %v", err)
 		ok = false
 	} else {
@@ -197,7 +212,7 @@ func collectOnce(client *Client) {
 	}
 
 	for _, protocol := range []string{"tcp", "udp"} {
-		if n, err := client.ConnectionCount(protocol); err != nil {
+		if n, err := fetchConnectionCount(conn, protocol); err != nil {
 			log.Printf("connection count (%s): %v", protocol, err)
 			ok = false
 		} else {

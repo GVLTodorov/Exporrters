@@ -14,13 +14,9 @@ func main() {
 		log.Fatalf("Config error: %v", err)
 	}
 
-	scheme := "https"
-	if !cfg.UseHTTPS {
-		scheme = "http"
-	}
 	log.Printf(
-		"Target: %s://%s (user=%s, insecure_skip_verify=%v, fetch_interval=%v)",
-		scheme, cfg.Address, cfg.User, cfg.InsecureSkipVerify, cfg.FetchInterval,
+		"Target: %s:%s (user=%s, tls=%v, fetch_interval=%v)",
+		cfg.Address, cfg.APIPort, cfg.User, cfg.UseTLS, cfg.FetchInterval,
 	)
 
 	registerMetrics()

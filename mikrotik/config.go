@@ -11,9 +11,10 @@ import (
 // Config holds everything read from the environment at startup.
 type Config struct {
 	Address            string
+	APIPort            string
 	User               string
 	Password           string
-	UseHTTPS           bool
+	UseTLS             bool
 	InsecureSkipVerify bool
 	ListenPort         string
 	FetchInterval      time.Duration
@@ -45,11 +46,23 @@ func loadConfig() (Config, error) {
 		listenPort = "8080"
 	}
 
+	useTLS := parseBoolEnv("MIKROTIK_USE_TLS", false)
+
+	apiPort := os.Getenv("MIKROTIK_API_PORT")
+	if apiPort == "" {
+		if useTLS {
+			apiPort = "8729" // api-ssl
+		} else {
+			apiPort = "8728" // api
+		}
+	}
+
 	return Config{
 		Address:            address,
+		APIPort:            apiPort,
 		User:               user,
 		Password:           password,
-		UseHTTPS:           parseBoolEnv("MIKROTIK_USE_HTTPS", true),
+		UseTLS:             useTLS,
 		InsecureSkipVerify: parseBoolEnv("MIKROTIK_INSECURE_SKIP_VERIFY", true),
 		ListenPort:         listenPort,
 		FetchInterval:      parseDurationEnv("FETCH_INTERVAL", 15*time.Second),

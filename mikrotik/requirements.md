@@ -55,9 +55,7 @@ A custom Prometheus exporter for a single RouterOS device, following the same co
 
 - **Language/stack**: Go, single `main.go` (or a small package split if it grows) — matches `WeatherExporrter` / `StockExporrter` / `XiaomiExporrter`
 - **Config**: environment variables, not a mounted YAML file (matches sibling projects' convention, and this is a single-device exporter so a YAML `targets:` list is unnecessary complexity) — e.g. `MIKROTIK_ADDRESS`, `MIKROTIK_USER`, `MIKROTIK_PASSWORD`, `LISTEN_PORT`
-- **RouterOS connection method** — open decision, two options:
-  - **(a) REST API** (RouterOS 7+, `https://<router>/rest/...`) — plain `net/http` + JSON, no extra dependency, fits the project's existing simple-HTTP-client style
-  - **(b) Binary API client library** (e.g. `go-routeros/routeros`) — what both existing exporters use under the hood; more proven, but an extra dependency
+- **RouterOS connection method** — **decided: (b) binary API**, via `go-routeros/routeros/v3` over port 8728. Confirmed 2026-09-01 by scanning the live router: `www`/`www-ssl` (REST) are disabled, only the classic `api` (8728) and `winbox` (8291) services are open — same as what the currently-deployed `nshttpd` exporter already uses. REST (`https://<router>/rest/...`) was the original plan but isn't reachable without first enabling a service on the router.
 - Standard single-target `/metrics` endpoint — not swoga's probe-per-target model, since there's only ever one device
 - A scrape-success gauge (e.g. `mikrotik_up`) so Prometheus/Grafana can alert on connectivity failures
 - Structured logging to stdout
@@ -78,7 +76,7 @@ A custom Prometheus exporter for a single RouterOS device, following the same co
 
 ## 8. Open questions
 
-- REST API vs. binary API client — which do we want long-term?
-- Reuse the existing `prometheus` RouterOS user/credentials, or provision a fresh dedicated one for this project?
+- ~~REST API vs. binary API client — which do we want long-term?~~ Resolved 2026-09-01: binary API (see §5) — REST isn't reachable without enabling a router service.
+- Reuse the existing `prometheus` RouterOS user/credentials, or provision a fresh dedicated one for this project? (Used the existing credentials for the 2026-09-01 validation run against the live router; still open whether the deployed container should keep reusing them or get its own.)
 - Keep the `mikrotik_*` metric name prefix (drop-in compatible with the current Grafana dashboard's existing queries) or start a new namespace?
 - Timeline/decision for retiring the `nshttpd` exporter on l11 once this reaches parity?
