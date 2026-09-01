@@ -6,46 +6,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// Metric-name mapping to the currently-deployed nshttpd/mikrotik-exporter,
-// whose exact metric names + an "address" label the live "Mikrotik" Grafana
-// dashboard on l10 is hard-coded to query (checked 2026-09-02 via the
-// dashboard's own JSON, uid 000000168). None of these match today, so
-// swapping the Prometheus scrape target to this exporter as-is would blank
-// every panel. Kept here so a future rename/dashboard-update pass has a
-// ready reference instead of re-diffing the dashboard JSON from scratch:
-//
-//	ours                        -> nshttpd (dashboard queries this)
-//	mikrotik_cpu_load_percent   -> mikrotik_system_cpu_load{address}
-//	mikrotik_memory_free_bytes  -> mikrotik_system_free_memory{address}
-//	mikrotik_memory_total_bytes -> mikrotik_system_total_memory{address}
-//	mikrotik_storage_free_bytes -> mikrotik_system_free_hdd_space{address}
-//	mikrotik_storage_total_bytes-> mikrotik_system_total_hdd_space{address}
-//	mikrotik_uptime_seconds     -> mikrotik_system_uptime{address}, which
-//	                               ALSO carries "version"/"boardname" as
-//	                               labels on that same series (the dashboard's
-//	                               "Router Summary" panel legend is literally
-//	                               "{{version}} on {{boardname}}" off this
-//	                               metric) -- we expose those as a separate
-//	                               mikrotik_board_info{board_name,version}
-//	                               gauge instead, a different shape, not just
-//	                               a rename
-//	mikrotik_dhcp_leases_active -> mikrotik_dhcp_leases_active_count{address}
-//	mikrotik_interface_*_bytes_total -> mikrotik_interface_rx_byte / _tx_byte
-//	                               {address,interface,comment} -- note the
-//	                               singular name AND a "comment" label (the
-//	                               router's own interface comment, e.g.
-//	                               "2.4ghz"/"5ghz" on wifi1/wifi2, used in the
-//	                               WiFi panel's legend) that we don't
-//	                               currently read from /interface/print at all
-//
-// Every nshttpd metric above carries "address" (its target router's IP) as
-// a label, including the dashboard's $node template variable
-// (label_values(mikrotik_system_uptime,address)); we deliberately don't
-// emit one anywhere (single-target exporter, see requirements.md §5).
-//
-// mikrotik_up, mikrotik_connections_total, mikrotik_interface_up/enabled,
-// and the packet/error/drop interface counters below have no equivalent in
-// the current dashboard queries -- they're net-new, not renames.
 var (
 	up = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "mikrotik_up",
