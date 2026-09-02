@@ -15,8 +15,8 @@ The REST API was the original plan, but the target router only has the classic `
 docker run -d \
   --name mikrotikexporter \
   -p 9081:8080 \
-  -e MIKROTIK_ADDRESS=192.168.1.1 \
-  -e MIKROTIK_USER=prometheus \
+  -e MIKROTIK_ADDRESS=192.168.88.1 \
+  -e MIKROTIK_USER=exporter \
   -e MIKROTIK_PASSWORD=changeme \
   ghcr.io/gvltodorov/mikrotikexporrter:latest
 ```
@@ -37,8 +37,8 @@ curl http://localhost:9081/metrics
     ports:
       - 9081:8080
     environment:
-      - MIKROTIK_ADDRESS=192.168.1.1
-      - MIKROTIK_USER=prometheus
+      - MIKROTIK_ADDRESS=192.168.88.1
+      - MIKROTIK_USER=exporter
       - MIKROTIK_PASSWORD=changeme
       - FETCH_INTERVAL=15s
     networks:
@@ -49,7 +49,7 @@ curl http://localhost:9081/metrics
 
 | Variable                        | Default        | Description                                                                 |
 |----------------------------------|----------------|-------------------------------------------------------------------------------|
-| `MIKROTIK_ADDRESS`               | *(required)*   | Router hostname or IP, no port (e.g. `192.168.1.1`).                         |
+| `MIKROTIK_ADDRESS`               | *(required)*   | Router hostname or IP, no port (e.g. `192.168.88.1`).                        |
 | `MIKROTIK_PASSWORD`               | *(required)*   | Password for `MIKROTIK_USER`.                                                |
 | `MIKROTIK_USER`                  | `prometheus`   | RouterOS user with (at minimum) read access to `system`, `interface`, `ip dhcp-server`, `ip firewall`. |
 | `MIKROTIK_API_PORT`              | `8728` (`8729` if `MIKROTIK_USE_TLS=true`) | RouterOS API port.                              |
