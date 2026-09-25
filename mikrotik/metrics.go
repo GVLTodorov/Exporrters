@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"strconv"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -50,6 +51,11 @@ var (
 		Name: "mikrotik_connections_total",
 		Help: "Active /ip/firewall/connection entries by protocol.",
 	}, []string{"protocol"})
+
+	healthTemperatureCelsius = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "mikrotik_health_temperature_celsius",
+		Help: "Temperature per /system/health sensor (e.g. cpu-temperature), in degrees Celsius.",
+	}, []string{"sensor"})
 
 	interfaceRxBytesTotal = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "mikrotik_interface_rx_bytes_total",
@@ -100,6 +106,7 @@ var allCollectors = []prometheus.Collector{
 	cpuLoadPercent, memoryFreeBytes, memoryTotalBytes, storageFreeBytes, storageTotalBytes,
 	uptimeSeconds, boardInfo,
 	dhcpLeasesActive, connectionsTotal,
+	healthTemperatureCelsius,
 	interfaceRxBytesTotal, interfaceTxBytesTotal,
 	interfaceRxPacketsTotal, interfaceTxPacketsTotal,
 	interfaceRxErrorsTotal, interfaceTxErrorsTotal,
@@ -161,6 +168,26 @@ func applyInterfaces(ifaces []Interface) {
 	}
 }
 
+// applyHealth maps /system/health temperature sensors (type "C") onto
+// healthTemperatureCelsius. Other sensor types (voltage, fan RPM, PSU
+// state) are ignored. The vector is reset first so a sensor that stops
+// reporting drops out instead of serving a stale reading; unparseable
+// values are skipped rather than exported as 0.
+func applyHealth(sensors []HealthSensor) {
+	healthTemperatureCelsius.Reset()
+	for _, s := range sensors {
+		if s.Type != "C" || s.Name == "" {
+			continue
+		}
+		v, err := strconv.ParseFloat(s.Value, 64)
+		if err != nil {
+			log.Printf("Could not parse %s value %q", s.Name, s.Value)
+			continue
+		}
+		healthTemperatureCelsius.WithLabelValues(s.Name).Set(v)
+	}
+}
+
 func boolToFloat(b bool) float64 {
 	if b {
 		return 1
@@ -202,6 +229,13 @@ func collect(conn runner) {
 		ok = false
 	} else {
 		applyInterfaces(ifaces)
+	}
+
+	if sensors, err := fetchHealth(conn); err != nil {
+		log.Printf("health: %v", err)
+		ok = false
+	} else {
+		applyHealth(sensors)
 	}
 
 	if n, err := fetchDHCPBoundLeaseCount(conn); err != nil {

@@ -163,6 +163,52 @@ func TestFetchConnectionCount(t *testing.T) {
 	}
 }
 
+func TestFetchHealth(t *testing.T) {
+	stub := &stubRunner{replies: map[string]*ros.Reply{
+		"/system/health/print": {Re: []*proto.Sentence{
+			sentence(map[string]string{".id": "*D", "name": "cpu-temperature", "value": "44", "type": "C"}),
+			sentence(map[string]string{".id": "*E", "name": "voltage", "value": "24.1", "type": "V"}),
+		}},
+	}}
+
+	sensors, err := fetchHealth(stub)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []HealthSensor{
+		{Name: "cpu-temperature", Value: "44", Type: "C"},
+		{Name: "voltage", Value: "24.1", Type: "V"},
+	}
+	if len(sensors) != len(want) {
+		t.Fatalf("sensors = %+v, want %+v", sensors, want)
+	}
+	for i := range want {
+		if sensors[i] != want[i] {
+			t.Errorf("sensors[%d] = %+v, want %+v", i, sensors[i], want[i])
+		}
+	}
+}
+
+func TestFetchHealthNoSensors(t *testing.T) {
+	// Boards without health sensors (e.g. CHR) reply with just !done.
+	sensors, err := fetchHealth(&stubRunner{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(sensors) != 0 {
+		t.Errorf("sensors = %+v, want none", sensors)
+	}
+}
+
+func TestFetchHealthRunError(t *testing.T) {
+	stub := &stubRunner{errs: map[string]error{
+		"/system/health/print": errors.New("not enough permissions"),
+	}}
+	if _, err := fetchHealth(stub); err == nil {
+		t.Fatal("expected an error when Run fails")
+	}
+}
+
 func TestCountOnlyMissingRet(t *testing.T) {
 	stub := &stubRunner{replies: map[string]*ros.Reply{
 		"/ip/firewall/connection/print": {Re: []*proto.Sentence{sentence(map[string]string{})}},

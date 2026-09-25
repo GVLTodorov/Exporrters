@@ -51,7 +51,7 @@ curl http://localhost:9081/metrics
 |----------------------------------|----------------|-------------------------------------------------------------------------------|
 | `MIKROTIK_ADDRESS`               | *(required)*   | Router hostname or IP, no port (e.g. `192.168.88.1`).                        |
 | `MIKROTIK_PASSWORD`               | *(required)*   | Password for `MIKROTIK_USER`.                                                |
-| `MIKROTIK_USER`                  | `prometheus`   | RouterOS user with (at minimum) read access to `system`, `interface`, `ip dhcp-server`, `ip firewall`. |
+| `MIKROTIK_USER`                  | `prometheus`   | RouterOS user with (at minimum) read access to `system` (incl. `system health`), `interface`, `ip dhcp-server`, `ip firewall`. |
 | `MIKROTIK_API_PORT`              | `8728` (`8729` if `MIKROTIK_USE_TLS=true`) | RouterOS API port.                              |
 | `MIKROTIK_USE_TLS`               | `false`        | Use the encrypted `api-ssl` service instead of plaintext `api`.              |
 | `MIKROTIK_INSECURE_SKIP_VERIFY`  | `true`         | Skip TLS certificate verification when `MIKROTIK_USE_TLS=true` (RouterOS ships a self-signed cert by default). |
@@ -92,6 +92,7 @@ Plaintext `api` (port 8728) sends credentials unencrypted on the LAN — the sam
 | `mikrotik_interface_enabled`           | gauge | `interface`         | `/interface` → `!disabled`                            |
 | `mikrotik_dhcp_leases_active`          | gauge | —                   | `/ip/dhcp-server/lease` count where `status=bound`    |
 | `mikrotik_connections_total`           | gauge | `protocol` (`tcp`/`udp`) | `/ip/firewall/connection` count-only, filtered by protocol |
+| `mikrotik_health_temperature_celsius` | gauge | `sensor` (e.g. `cpu-temperature`) | `/system/health` → `value` of each sensor with `type=C` (RouterOS v7) |
 
 The `*_total`-suffixed interface counters mirror RouterOS's own cumulative counters (they reset on interface reset/router reboot) — same convention as `node_exporter`'s network metrics, so `rate()`/`increase()` in PromQL work as expected. An interface that disappears (e.g. a removed WireGuard peer) drops out of `/metrics` on the next scrape rather than keeping a stale series.
 

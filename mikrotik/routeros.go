@@ -128,6 +128,34 @@ func fetchInterfaces(c runner) ([]Interface, error) {
 	return ifaces, nil
 }
 
+// HealthSensor is one row of RouterOS v7's /system/health print, which
+// returns one sentence per sensor (e.g. name=cpu-temperature value=44
+// type=C) rather than v6's single sentence of fixed fields.
+type HealthSensor struct {
+	Name  string
+	Value string
+	Type  string
+}
+
+// fetchHealth reads every /system/health sensor. Boards without sensors
+// (e.g. CHR) return an empty list, which is not an error.
+func fetchHealth(c runner) ([]HealthSensor, error) {
+	reply, err := c.Run("/system/health/print")
+	if err != nil {
+		return nil, err
+	}
+	sensors := make([]HealthSensor, 0, len(reply.Re))
+	for _, sen := range reply.Re {
+		m := sen.Map
+		sensors = append(sensors, HealthSensor{
+			Name:  m["name"],
+			Value: m["value"],
+			Type:  m["type"],
+		})
+	}
+	return sensors, nil
+}
+
 // countOnly runs {path}/print with a `?filter` query and the count-only
 // flag, and returns the count. This deliberately never dumps the full
 // table — important for /ip/firewall/connection, whose conntrack table can

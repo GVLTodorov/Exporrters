@@ -83,13 +83,42 @@ func TestApplyInterfacesRunningAndDisabled(t *testing.T) {
 	}
 }
 
+func TestApplyHealth(t *testing.T) {
+	applyHealth([]HealthSensor{
+		{Name: "cpu-temperature", Value: "44", Type: "C"},
+		{Name: "board-temperature1", Value: "38.5", Type: "C"},
+		{Name: "voltage", Value: "24.1", Type: "V"},
+		{Name: "fan1-speed", Value: "3200", Type: "RPM"},
+	})
+	if got := testutil.ToFloat64(healthTemperatureCelsius.WithLabelValues("cpu-temperature")); got != 44 {
+		t.Errorf("cpu-temperature = %v, want 44", got)
+	}
+	if got := testutil.ToFloat64(healthTemperatureCelsius.WithLabelValues("board-temperature1")); got != 38.5 {
+		t.Errorf("board-temperature1 = %v, want 38.5", got)
+	}
+	// Only type=C sensors become temperature series.
+	if n := testutil.CollectAndCount(healthTemperatureCelsius); n != 2 {
+		t.Fatalf("temperature series count = %d, want 2", n)
+	}
+
+	// board-temperature1 disappears and cpu-temperature reports garbage —
+	// neither may leave a stale or zeroed series behind.
+	applyHealth([]HealthSensor{
+		{Name: "cpu-temperature", Value: "n/a", Type: "C"},
+	})
+	if n := testutil.CollectAndCount(healthTemperatureCelsius); n != 0 {
+		t.Fatalf("temperature series count = %d, want 0", n)
+	}
+}
+
 // fakeRouter wires up canned replies for every command collect() depends
 // on, so behavior can be verified end-to-end without a real router
 // connection. Its Run method inspects the full sentence (not just the
 // command word) so it can distinguish the tcp/udp connection-count calls,
 // which share a command word but differ in their ?protocol= filter.
 type fakeRouter struct {
-	dhcpFails bool
+	dhcpFails   bool
+	healthFails bool
 }
 
 func (f *fakeRouter) Run(words ...string) (*ros.Reply, error) {
@@ -103,6 +132,13 @@ func (f *fakeRouter) Run(words ...string) (*ros.Reply, error) {
 	case "/interface/print":
 		return &ros.Reply{Re: []*proto.Sentence{sentence(map[string]string{
 			"name": "ether1", "running": "true", "disabled": "false",
+		})}}, nil
+	case "/system/health/print":
+		if f.healthFails {
+			return nil, errors.New("not enough permissions")
+		}
+		return &ros.Reply{Re: []*proto.Sentence{sentence(map[string]string{
+			"name": "cpu-temperature", "value": "51", "type": "C",
 		})}}, nil
 	case "/ip/dhcp-server/lease/print":
 		if f.dhcpFails {
@@ -142,6 +178,9 @@ func TestCollectSuccess(t *testing.T) {
 	if got := testutil.ToFloat64(cpuLoadPercent); got != 7 {
 		t.Errorf("cpuLoadPercent = %v, want 7", got)
 	}
+	if got := testutil.ToFloat64(healthTemperatureCelsius.WithLabelValues("cpu-temperature")); got != 51 {
+		t.Errorf("healthTemperatureCelsius{cpu-temperature} = %v, want 51", got)
+	}
 }
 
 func TestCollectPartialFailureMarksDown(t *testing.T) {
@@ -153,5 +192,16 @@ func TestCollectPartialFailureMarksDown(t *testing.T) {
 	// Other metrics still reflect whatever succeeded this round.
 	if got := testutil.ToFloat64(cpuLoadPercent); got != 7 {
 		t.Errorf("cpuLoadPercent = %v, want 7 (system resource still succeeded)", got)
+	}
+}
+
+func TestCollectHealthFailureMarksDown(t *testing.T) {
+	collect(&fakeRouter{healthFails: true})
+
+	if got := testutil.ToFloat64(up); got != 0 {
+		t.Errorf("up = %v, want 0 when the health query fails", got)
+	}
+	if got := testutil.ToFloat64(dhcpLeasesActive); got != 9 {
+		t.Errorf("dhcpLeasesActive = %v, want 9 (later queries still run)", got)
 	}
 }
