@@ -42,6 +42,13 @@
       "problemMatcher": []
     },
     {
+      "label": "soak: run 30 min",
+      "detail": "All exporters in Docker, scraped like Prometheus; report in soak/results/",
+      "type": "shell",
+      "command": "python soak/soak.py --duration 30m",
+      "problemMatcher": []
+    },
+    {
       "label": "docker: up (pick exporter)",
       "type": "shell",
       "command": "docker compose up --build ${input:exporter}",

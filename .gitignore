@@ -22,3 +22,6 @@ dist/
 # Editors / tools
 .claude/
 .idea/
+
+# Soak test output
+soak/results/

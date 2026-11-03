@@ -1,0 +1,40 @@
+# Soak-test overrides, layered on ../compose.yaml by soak.py:
+#   docker compose -p exporrters-soak -f compose.yaml -f soak/compose.soak.yaml up
+#
+# - restart: "no" so a crash or OOM kill is visible instead of hidden by a restart
+# - internal fetch intervals are shortened so 30 minutes covers many more
+#   refresh cycles than production would (more chances for a leak to show)
+# - stock talks to a local fake Polygon, so production's API quota is untouched
+services:
+  mikrotik:
+    restart: "no"
+    environment:
+      FETCH_INTERVAL: 5s          # prod: 15s
+
+  ping:
+    restart: "no"
+    volumes:
+      - ./soak/ping-config.yml:/config/config.yml:ro
+
+  stock:
+    restart: "no"
+    depends_on: [fake-polygon]
+    environment:
+      POLYGON_BASE_URL: http://fake-polygon:8080
+      POLYGON_API_KEY: soak-test  # overrides whatever stock/.env contains
+      SYMBOLS: QCOM,NVDA,INTC,MU,GSL
+
+  weather:
+    restart: "no"
+    environment:
+      FETCH_INTERVAL: 1m          # prod: 10m
+
+  xiaomi:
+    restart: "no"
+
+  fake-polygon:
+    image: python:3.11-alpine
+    restart: "no"
+    command: ["python", "-u", "/fake_polygon.py"]
+    volumes:
+      - ./soak/fake_polygon.py:/fake_polygon.py:ro

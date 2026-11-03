@@ -11,6 +11,9 @@ published independently.
 | [weather](weather/) | Go | `ghcr.io/gvltodorov/exporrters/weather` | 9080 |
 | [xiaomi](xiaomi/) | Python | `ghcr.io/gvltodorov/exporrters/xiaomi` | 8086 |
 
+Opening an exporter's root URL (for example `http://localhost:9436/`)
+redirects to `/metrics`.
+
 Images are published under this repo's namespace. The old per-repo images
 (`ghcr.io/gvltodorov/<name>exporrter`) are no longer updated.
 
@@ -108,6 +111,14 @@ meaningless.
 
 A commit that only changes tests or docs (`*_test.go`, `tests/`, `*.md`)
 is still tested, but it doesn't publish a new image.
+
+## Soak test
+
+[soak/](soak/) runs every exporter in Docker against its real upstream for
+30 minutes, scrapes them like Prometheus, and checks memory, goroutines,
+threads, file descriptors and series counts for steady growth. Run
+`python soak/soak.py`, or the VS Code task **soak: run 30 min**. See
+[soak/README.md](soak/README.md).
 
 ## Adding a new exporter
 

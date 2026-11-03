@@ -18,6 +18,7 @@ on:
       - "**.md"
       - ".vscode/**"
       - "compose.yaml"
+      - "soak/**"
   pull_request:
   workflow_dispatch:
     inputs:
