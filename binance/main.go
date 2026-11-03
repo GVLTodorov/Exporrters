@@ -132,9 +132,13 @@ func metricsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	http.HandleFunc("/metrics", metricsHandler)
+	if v := os.Getenv("BINANCE_BASE_URL"); v != "" {
+		binanceBaseURL = strings.TrimRight(v, "/")
+	}
+
 	fmt.Println("Starting server on :8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	fmt.Printf("Symbols: %v\n", getSymbols())
+	if err := http.ListenAndServe(":8080", newMux(http.HandlerFunc(metricsHandler))); err != nil {
 		fmt.Printf("Server failed to start: %v\n", err)
 	}
 }
