@@ -32,8 +32,7 @@ func main() {
 		}
 	}()
 
-	http.Handle("/metrics", promhttp.Handler())
 	addr := ":" + cfg.ListenPort
 	log.Printf("Listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, nil))
+	log.Fatal(http.ListenAndServe(addr, newMux(promhttp.Handler())))
 }
