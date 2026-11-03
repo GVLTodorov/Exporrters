@@ -300,6 +300,10 @@ func metricsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	if v := os.Getenv("POLYGON_BASE_URL"); v != "" {
+		polygonBaseURL = strings.TrimRight(v, "/")
+	}
+
 	// Validate environment variables at startup
 	symbols, err := getSymbols()
 	if err != nil {
@@ -329,8 +333,7 @@ func main() {
 	// Start background goroutine to refresh prices periodically
 	go refreshPrices(symbols, apiKey)
 
-	http.HandleFunc("/metrics", metricsHandler)
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	if err := http.ListenAndServe(":8080", newMux(http.HandlerFunc(metricsHandler))); err != nil {
 		fmt.Printf("Server failed to start: %v\n", err)
 	}
 }
