@@ -74,7 +74,40 @@ To force a release (for example to rebuild on a new base image), go to
      [compose.yaml](compose.yaml), and each exporter gets its own port (see
      the table above).
 
-Test tasks: **test: <exporter>** and **test: all Go exporters**.
+Test tasks: **test: <exporter>**, **test: all Go exporters**,
+**test: leak tests (pick exporter)** and **test: xiaomi**.
+
+## Tests
+
+Every exporter has two kinds of tests, and CI runs them as separate steps:
+
+| | Go (`*_test.go`) | Python (`xiaomi/tests`) |
+|---|---|---|
+| Unit tests | `go test ./... -race -skip Leak` | `pytest -m "not leak"` |
+| Leak tests | `go test ./... -run Leak -count=3` | `pytest -m leak` |
+
+The leak tests check that a long-running exporter doesn't slowly use up
+resources:
+
+- **Goroutines:** `goleak` runs after every test in the package and fails if
+  anything is left running. It catches refresh loops, prober goroutines and
+  HTTP keep-alive readers.
+- **Connections:** a counting test server checks that response bodies are
+  closed and drained, so connections are reused rather than piling up.
+  Hung upstreams must time out.
+- **Heap:** each test runs thousands of scrape or refresh cycles and checks
+  that the live heap after GC stays flat (`assertNoHeapGrowth` in
+  `leakutil_test.go`; `tracemalloc` for Python). Oversized upstream
+  responses must be capped.
+- **Series count:** interface names, DNS answers, forecast lengths and
+  sensors that change must not leave stale metric series behind.
+
+Leak tests have `Leak` in their name (Go) or the `leak` marker (Python),
+and run without `-race`, because the race detector makes heap figures
+meaningless.
+
+A commit that only changes tests or docs (`*_test.go`, `tests/`, `*.md`)
+is still tested, but it doesn't publish a new image.
 
 ## Adding a new exporter
 

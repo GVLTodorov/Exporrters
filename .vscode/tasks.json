@@ -14,10 +14,30 @@
       "group": { "kind": "test", "isDefault": true }
     },
     {
-      "label": "xiaomi: create venv",
+      "label": "test: leak tests (pick exporter)",
+      "detail": "goroutine / connection / heap / series leak tests, verbose",
       "type": "shell",
-      "command": "python -m venv .venv && .venv/bin/pip install -e .",
-      "windows": { "command": "python -m venv .venv; if ($?) { .venv/Scripts/pip install -e . }" },
+      "command": "go test ./... -run Leak -count=1 -v",
+      "options": { "cwd": "${workspaceFolder}/${input:goExporter}" },
+      "problemMatcher": "$go",
+      "group": "test"
+    },
+    {
+      "label": "test: xiaomi",
+      "detail": "unit + leak tests (needs the xiaomi venv)",
+      "type": "shell",
+      "command": ".venv/bin/python -m pytest -v",
+      "windows": { "command": ".venv/Scripts/python -m pytest -v" },
+      "options": { "cwd": "${workspaceFolder}/xiaomi" },
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "xiaomi: create venv",
+      "detail": "needs Python 3.11 (python-miio 0.4.7 does not install on newer versions)",
+      "type": "shell",
+      "command": "python3.11 -m venv .venv && .venv/bin/pip install -e '.[test]'",
+      "windows": { "command": "py -3.11 -m venv .venv; if ($?) { .venv/Scripts/pip install -e '.[test]' }" },
       "options": { "cwd": "${workspaceFolder}/xiaomi" },
       "problemMatcher": []
     },
@@ -49,6 +69,12 @@
     }
   ],
   "inputs": [
+    {
+      "id": "goExporter",
+      "type": "pickString",
+      "description": "Go exporter",
+      "options": ["mikrotik", "ping", "stock", "weather"]
+    },
     {
       "id": "exporter",
       "type": "pickString",

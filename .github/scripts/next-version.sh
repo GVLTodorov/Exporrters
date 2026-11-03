@@ -10,6 +10,7 @@
 #   feat!: / fix!: / "BREAKING CHANGE"  -> major (minor while still on 0.x)
 #   feat:                               -> minor
 #   anything else                       -> patch
+#   only *_test.go, tests/, *.md changed -> no release
 #   no previous tag                     -> 0.1.0
 #
 # Prints key=value lines (for $GITHUB_OUTPUT):
@@ -25,8 +26,15 @@ forced="${2:-auto}"
 last_tag="$(git tag --list "${name}/v*" --sort=-v:refname | head -n1)"
 range="${last_tag:+${last_tag}..}HEAD"
 
-# Subjects + bodies of commits that touched this exporter.
-log="$(git log "$range" --format='%s%n%b' -- "${name}/")"
+# Subjects + bodies of commits that changed what goes into this exporter's
+# image. Test-only and docs-only commits are still tested in CI but do not
+# publish a new image. (In git pathspecs '*' also matches '/'.)
+log="$(git log "$range" --format='%s%n%b' -- "${name}/" \
+  ":(exclude)${name}/*_test.go" \
+  ":(exclude)${name}/tests/*" \
+  ":(exclude)${name}/*.md" \
+  ":(exclude)${name}/.env.example" \
+  ":(exclude)${name}/config.example.yml")"
 
 if [[ -z "$log" && "$forced" == "auto" ]]; then
   echo "changed=false"
