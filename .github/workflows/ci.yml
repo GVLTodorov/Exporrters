@@ -25,7 +25,7 @@ on:
       exporter:
         description: Exporter to release
         type: choice
-        options: [all, mikrotik, ping, stock, weather, xiaomi]
+        options: [all, binance, mikrotik, ping, stock, weather, xiaomi]
         default: all
       bump:
         description: Version bump

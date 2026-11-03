@@ -5,6 +5,7 @@ published independently.
 
 | Folder | Language | Image | Local port |
 |---|---|---|---|
+| [binance](binance/) | Go | `ghcr.io/gvltodorov/exporrters/binance` | 8088 |
 | [mikrotik](mikrotik/) | Go | `ghcr.io/gvltodorov/exporrters/mikrotik` | 9436 |
 | [ping](ping/) | Go | `ghcr.io/gvltodorov/exporrters/ping` | 9427 |
 | [stock](stock/) | Go | `ghcr.io/gvltodorov/exporrters/stock` | 8087 |
@@ -64,14 +65,14 @@ To force a release (for example to rebuild on a new base image), go to
    secrets. For ping, also copy `ping/config.example.yml` to
    `ping/config.yml`. All of these are git-ignored.
 3. Then use either:
-   - **Run and Debug (F5):** pick `mikrotik`, `ping`, `stock`, `weather` or
-     `xiaomi`.
+   - **Run and Debug (F5):** pick `binance`, `mikrotik`, `ping`, `stock`,
+     `weather` or `xiaomi`.
      - ping needs raw ICMP sockets, so on Windows start VS Code as
        Administrator.
      - xiaomi needs the **xiaomi: create venv** task run once first, with
        Python 3.11. That matches the Docker image; python-miio 0.4.7 is old.
-     - stock and weather both listen on `:8080`, so run only one of them
-       natively at a time.
+     - binance, stock and weather all listen on `:8080`, so run only one of
+       them natively at a time.
    - **Docker:** use the task **docker: up (pick exporter)** or
      **docker: up all**. This builds from source with
      [compose.yaml](compose.yaml), and each exporter gets its own port (see

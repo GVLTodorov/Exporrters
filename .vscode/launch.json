@@ -1,10 +1,19 @@
 {
   // F5 / Run and Debug: pick an exporter. Each one reads <exporter>/.env
-  // (git-ignored, copy from .env.example). Stock and Weather both listen
-  // on :8080, so run only one of them natively at a time - or use the
+  // (git-ignored, copy from .env.example). Binance, Stock and Weather all
+  // listen on :8080, so run only one of them natively at a time - or use the
   // "docker: up" task, which maps every exporter to its own host port.
   "version": "0.2.0",
   "configurations": [
+    {
+      "name": "binance",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/binance",
+      "cwd": "${workspaceFolder}/binance",
+      "envFile": "${workspaceFolder}/binance/.env"
+    },
     {
       "name": "mikrotik",
       "type": "go",

@@ -2,13 +2,14 @@
   // Terminal > Run Task...
   "version": "2.0.0",
   "tasks": [
+    { "label": "test: binance",  "type": "shell", "command": "go test ./... -cover", "options": { "cwd": "${workspaceFolder}/binance" },  "problemMatcher": "$go", "group": "test" },
     { "label": "test: mikrotik", "type": "shell", "command": "go test ./... -cover", "options": { "cwd": "${workspaceFolder}/mikrotik" }, "problemMatcher": "$go", "group": "test" },
     { "label": "test: ping",     "type": "shell", "command": "go test ./... -cover", "options": { "cwd": "${workspaceFolder}/ping" },     "problemMatcher": "$go", "group": "test" },
     { "label": "test: stock",    "type": "shell", "command": "go test ./... -cover", "options": { "cwd": "${workspaceFolder}/stock" },    "problemMatcher": "$go", "group": "test" },
     { "label": "test: weather",  "type": "shell", "command": "go test ./... -cover", "options": { "cwd": "${workspaceFolder}/weather" },  "problemMatcher": "$go", "group": "test" },
     {
       "label": "test: all Go exporters",
-      "dependsOn": ["test: mikrotik", "test: ping", "test: stock", "test: weather"],
+      "dependsOn": ["test: binance", "test: mikrotik", "test: ping", "test: stock", "test: weather"],
       "dependsOrder": "sequence",
       "problemMatcher": [],
       "group": { "kind": "test", "isDefault": true }
@@ -70,8 +71,8 @@
       "label": "release: preview next versions",
       "detail": "What CI would release if you pushed to main now",
       "type": "shell",
-      "command": "for e in mikrotik ping stock weather xiaomi; do echo \"== $e\"; bash .github/scripts/next-version.sh $e; done",
-      "windows": { "command": "$g = Split-Path (Get-Command git).Source; $bash = @(\"$g/bash.exe\", \"$g/../bin/bash.exe\") | Where-Object { Test-Path $_ } | Select-Object -First 1; foreach ($e in 'mikrotik','ping','stock','weather','xiaomi') { \"== $e\"; & $bash .github/scripts/next-version.sh $e }" },
+      "command": "for e in binance mikrotik ping stock weather xiaomi; do echo \"== $e\"; bash .github/scripts/next-version.sh $e; done",
+      "windows": { "command": "$g = Split-Path (Get-Command git).Source; $bash = @(\"$g/bash.exe\", \"$g/../bin/bash.exe\") | Where-Object { Test-Path $_ } | Select-Object -First 1; foreach ($e in 'binance','mikrotik','ping','stock','weather','xiaomi') { \"== $e\"; & $bash .github/scripts/next-version.sh $e }" },
       "problemMatcher": []
     }
   ],
@@ -80,13 +81,13 @@
       "id": "goExporter",
       "type": "pickString",
       "description": "Go exporter",
-      "options": ["mikrotik", "ping", "stock", "weather"]
+      "options": ["binance", "mikrotik", "ping", "stock", "weather"]
     },
     {
       "id": "exporter",
       "type": "pickString",
       "description": "Exporter",
-      "options": ["mikrotik", "ping", "stock", "weather", "xiaomi"]
+      "options": ["binance", "mikrotik", "ping", "stock", "weather", "xiaomi"]
     }
   ]
 }
