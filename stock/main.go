@@ -21,6 +21,19 @@ func min(a, b int) int {
 	return b
 }
 
+var (
+	// polygonBaseURL is a variable so tests can point it at a local server.
+	polygonBaseURL = "https://api.polygon.io"
+
+	// A timeout keeps a hung upstream request from blocking the refresh loop
+	// (and the goroutine + socket behind it) forever.
+	httpClient = &http.Client{Timeout: 15 * time.Second}
+)
+
+// maxBodyBytes caps how much of an upstream response is read into memory.
+// A real /prev reply is well under 1 KB.
+const maxBodyBytes = 1 << 20
+
 type AggregatesResponse struct {
 	Status       string `json:"status"`
 	Ticker       string `json:"ticker"`
@@ -134,15 +147,15 @@ func fetchPrice(symbol string, apiKey string) (float64, error) {
 	// Enforce rate limit before making request
 	limiter.waitIfNeeded()
 	
-	apiUrl := fmt.Sprintf("https://api.polygon.io/v2/aggs/ticker/%s/prev?apikey=%s", symbol, apiKey)
+	apiUrl := fmt.Sprintf("%s/v2/aggs/ticker/%s/prev?apikey=%s", polygonBaseURL, symbol, apiKey)
 
-	resp, err := http.Get(apiUrl)
+	resp, err := httpClient.Get(apiUrl)
 	if err != nil {
 		return 0, err
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 	if err != nil {
 		return 0, fmt.Errorf("failed to read response body: %v", err)
 	}
