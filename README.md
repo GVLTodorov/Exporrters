@@ -5,14 +5,14 @@ published independently.
 
 | Folder | Language | Image | Local port |
 |---|---|---|---|
-| [mikrotik](mikrotik/) | Go | `ghcr.io/gvltodorov/mikrotikexporrter` | 9436 |
-| [ping](ping/) | Go | `ghcr.io/gvltodorov/pingexporrter` | 9427 |
-| [stock](stock/) | Go | `ghcr.io/gvltodorov/stockexporrter` | 8087 |
-| [weather](weather/) | Go | `ghcr.io/gvltodorov/weatherexporrter` | 9080 |
-| [xiaomi](xiaomi/) | Python | `ghcr.io/gvltodorov/xiaomiexporrter` | 8086 |
+| [mikrotik](mikrotik/) | Go | `ghcr.io/gvltodorov/exporrters/mikrotik` | 9436 |
+| [ping](ping/) | Go | `ghcr.io/gvltodorov/exporrters/ping` | 9427 |
+| [stock](stock/) | Go | `ghcr.io/gvltodorov/exporrters/stock` | 8087 |
+| [weather](weather/) | Go | `ghcr.io/gvltodorov/exporrters/weather` | 9080 |
+| [xiaomi](xiaomi/) | Python | `ghcr.io/gvltodorov/exporrters/xiaomi` | 8086 |
 
-Image names are the same as when each exporter lived in its own repo, so
-existing `docker-compose` files keep working.
+Images are published under this repo's namespace. The old per-repo images
+(`ghcr.io/gvltodorov/<name>exporrter`) are no longer updated.
 
 ## How releases work
 
@@ -81,7 +81,7 @@ Test tasks: **test: <exporter>** and **test: all Go exporters**.
 1. Create `<name>/` with a `Dockerfile`. CI detects it automatically.
 2. Add `<name>` to the `workflow_dispatch` options in `ci.yml`, to
    `.github/dependabot.yml`, to `compose.yaml` and to `.vscode/`.
-3. Images publish as `ghcr.io/gvltodorov/<name>exporrter`.
+3. Images publish as `ghcr.io/gvltodorov/exporrters/<name>`.
 
 ## History
 

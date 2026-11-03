@@ -154,10 +154,10 @@ jobs:
 
       - name: Image name
         id: image
-        # Keeps the image names the separate repos used to publish, so
-        # existing docker-compose files keep working:
-        #   ghcr.io/<owner>/<name>exporrter
-        run: echo "name=${REGISTRY}/${GITHUB_REPOSITORY_OWNER,,}/${{ matrix.name }}exporrter" >> "$GITHUB_OUTPUT"
+        # Images live under this repo's namespace, so GITHUB_TOKEN owns
+        # them without any extra package permissions:
+        #   ghcr.io/<owner>/exporrters/<name>
+        run: echo "name=${REGISTRY}/${GITHUB_REPOSITORY,,}/${{ matrix.name }}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
 
