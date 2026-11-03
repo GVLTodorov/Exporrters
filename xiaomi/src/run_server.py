@@ -2,6 +2,7 @@ import prometheus_client
 import logging
 import time
 import argparse
+import os
 from miio import AirPurifier
 from prometheus_client import Gauge
 
@@ -9,11 +10,16 @@ logging.basicConfig()
 log = logging.getLogger()
 log.setLevel(logging.INFO)
 
+def env_arg(parser, flag, env, help):
+    """CLI flag that falls back to an environment variable."""
+    default = os.environ.get(env)
+    parser.add_argument(flag, help=f'{help} (env: {env})', default=default, required=default is None)
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--ip', help='IP', required=True)
-    parser.add_argument('--token', help='token', required=True)
-    parser.add_argument('--port', help='prometheus port', required=True)
+    env_arg(parser, '--ip', 'IP', 'IP')
+    env_arg(parser, '--token', 'TOKEN', 'token')
+    env_arg(parser, '--port', 'PORT', 'prometheus port')
     args = parser.parse_args()
 
     device = AirPurifier(ip=args.ip, token=args.token)
