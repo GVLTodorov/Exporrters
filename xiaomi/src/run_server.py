@@ -1,53 +1,95 @@
-import prometheus_client
-import logging
-import time
 import argparse
+import logging
 import os
-from miio import AirPurifier
-from prometheus_client import Gauge
+import time
+from dataclasses import dataclass
+
+import prometheus_client
+from prometheus_client import REGISTRY, CollectorRegistry, Gauge
 
 logging.basicConfig()
 log = logging.getLogger()
 log.setLevel(logging.INFO)
+
+POLL_INTERVAL = 15  # seconds between successful reads
+RETRY_INTERVAL = 5  # seconds to wait after a failed read
+
 
 def env_arg(parser, flag, env, help):
     """CLI flag that falls back to an environment variable."""
     default = os.environ.get(env)
     parser.add_argument(flag, help=f'{help} (env: {env})', default=default, required=default is None)
 
-def main():
+
+def build_parser():
     parser = argparse.ArgumentParser()
     env_arg(parser, '--ip', 'IP', 'IP')
     env_arg(parser, '--token', 'TOKEN', 'token')
     env_arg(parser, '--port', 'PORT', 'prometheus port')
-    args = parser.parse_args()
+    return parser
+
+
+@dataclass
+class Metrics:
+    volume: Gauge
+    temperature: Gauge
+    humidity: Gauge
+    aqi: Gauge
+    avarageaqi: Gauge
+    filter_hours_used: Gauge
+
+
+def create_metrics(registry: CollectorRegistry = REGISTRY) -> Metrics:
+    return Metrics(
+        volume=Gauge('volume', 'Volume', registry=registry),
+        temperature=Gauge('temperature_celsius', 'Celsius', registry=registry),
+        humidity=Gauge('humidity_percent', 'Percent', registry=registry),
+        aqi=Gauge('aqi_index', 'Index', registry=registry),
+        avarageaqi=Gauge('avarage_aqi_index', 'Index', registry=registry),
+        filter_hours_used=Gauge('filter_hours_used', 'filter_hours_used', registry=registry),
+    )
+
+
+def update_metrics(metrics: Metrics, status) -> None:
+    metrics.temperature.set(status.temperature)
+    metrics.humidity.set(status.humidity)
+    metrics.aqi.set(status.aqi)
+    metrics.avarageaqi.set(status.average_aqi)
+    metrics.volume.set(status.volume)
+    metrics.filter_hours_used.set(status.filter_hours_used)
+
+
+def poll_once(device, metrics: Metrics) -> bool:
+    """Reads the device once and updates the gauges. Returns False (and
+    leaves the previous values in place) when the device can't be read."""
+    try:
+        status = device.status()
+    except Exception as err:
+        log.error("Can't get information from device, check token or network: %s", err)
+        return False
+    update_metrics(metrics, status)
+    return True
+
+
+def run_forever(device, metrics: Metrics, sleep=time.sleep, should_stop=lambda: False) -> None:
+    while not should_stop():
+        ok = poll_once(device, metrics)
+        sleep(POLL_INTERVAL if ok else RETRY_INTERVAL)
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+
+    from miio import AirPurifier  # imported here so tests don't need python-miio
 
     device = AirPurifier(ip=args.ip, token=args.token)
-
-    volume = Gauge('volume', 'Volume')
-    temperature = Gauge('temperature_celsius', 'Celsius')
-    humidity = Gauge('humidity_percent', 'Percent')
-    aqi = Gauge('aqi_index', 'Index')
-    avarageaqi = Gauge('avarage_aqi_index', 'Index')
-    filter_hours_used = Gauge("filter_hours_used","filter_hours_used")
+    metrics = create_metrics()
 
     prometheus_client.start_http_server(int(args.port))
     log.info("Server started at port {}".format(args.port))
 
-    while True:
-        try:
-            status = device.status()
-        except Exception as err:
-            log.error("Can't get information from device, check token or network: %s", err)
-            time.sleep(5)
-            continue
-        temperature.set(status.temperature)
-        humidity.set(status.humidity)
-        aqi.set(status.aqi)
-        avarageaqi.set(status.average_aqi)
-        volume.set(status.volume)
-        filter_hours_used.set(status.filter_hours_used)
-        time.sleep(15)
+    run_forever(device, metrics)
+
 
 if __name__ == '__main__':
     main()
