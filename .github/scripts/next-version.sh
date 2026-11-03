@@ -10,6 +10,7 @@
 #   feat!: / fix!: / "BREAKING CHANGE"  -> major (minor while still on 0.x)
 #   feat:                               -> minor
 #   anything else                       -> patch
+#   no previous tag                     -> 0.1.0
 #
 # Prints key=value lines (for $GITHUB_OUTPUT):
 #   changed=true|false   whether there is anything to release
@@ -24,8 +25,8 @@ forced="${2:-auto}"
 last_tag="$(git tag --list "${name}/v*" --sort=-v:refname | head -n1)"
 range="${last_tag:+${last_tag}..}HEAD"
 
-# Subjects + bodies of commits that touched this exporter, NUL separated.
-log="$(git log "$range" --format='%s%n%b%x00' -- "${name}/")"
+# Subjects + bodies of commits that touched this exporter.
+log="$(git log "$range" --format='%s%n%b' -- "${name}/")"
 
 if [[ -z "$log" && "$forced" == "auto" ]]; then
   echo "changed=false"
@@ -53,12 +54,17 @@ if [[ "$bump" == "major" && "$major" == "0" && "$forced" == "auto" ]]; then
   bump=minor
 fi
 
-case "$bump" in
+if [[ -z "$last_tag" ]]; then
+  # First release from this repo: start every exporter at 0.1.0.
+  major=0; minor=1; patch=0
+else
+  case "$bump" in
   major) major=$((major + 1)); minor=0; patch=0 ;;
   minor) minor=$((minor + 1)); patch=0 ;;
   patch) patch=$((patch + 1)) ;;
   *) echo "unknown bump: $bump" >&2; exit 1 ;;
-esac
+  esac
+fi
 
 version="${major}.${minor}.${patch}"
 echo "changed=true"
