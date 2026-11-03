@@ -8,14 +8,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-const landingPage = `<html>
-<head><title>ping_exporter</title></head>
-<body>
-<h1>ping_exporter</h1>
-<p><a href="/metrics">Metrics</a></p>
-</body>
-</html>`
-
 func main() {
 	configPath := envOr("CONFIG_FILE", defaultConfigFile)
 	listenAddr := envOr("LISTEN_ADDR", defaultListenAddr)
@@ -44,12 +36,6 @@ func main() {
 		log.Fatalf("Starting probers: %v", err)
 	}
 
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(landingPage))
-	})
-
 	log.Printf("Listening on %s", listenAddr)
-	log.Fatal(http.ListenAndServe(listenAddr, mux))
+	log.Fatal(http.ListenAndServe(listenAddr, newMux(promhttp.Handler())))
 }
