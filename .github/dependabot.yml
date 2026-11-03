@@ -1,0 +1,28 @@
+version: 2
+# Commit messages use Conventional Commits with the exporter as scope, so
+# a merged bump is picked up by next-version.sh as a patch release of
+# just that exporter (e.g. "chore(mikrotik): bump golang.org/x/net").
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    commit-message: { prefix: "ci" }
+    groups:
+      actions: { patterns: ["*"] }
+
+  - package-ecosystem: gomod
+    directories: [/mikrotik, /ping, /stock, /weather]
+    schedule: { interval: weekly }
+    commit-message: { prefix: "fix(deps)" }
+    groups:
+      go-deps: { patterns: ["*"] }
+
+  - package-ecosystem: pip
+    directory: /xiaomi
+    schedule: { interval: weekly }
+    commit-message: { prefix: "fix(deps)" }
+
+  - package-ecosystem: docker
+    directories: [/mikrotik, /ping, /stock, /weather, /xiaomi]
+    schedule: { interval: weekly }
+    commit-message: { prefix: "fix(docker)" }

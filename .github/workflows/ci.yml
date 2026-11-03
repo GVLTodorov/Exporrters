@@ -1,0 +1,216 @@
+name: CI
+
+# One workflow for every exporter in the repo.
+#
+#  pull_request  -> test only the exporters whose folder changed
+#                   (all of them if .github/ changed)
+#  push to main  -> for every exporter with commits since its last
+#                   <name>/vX.Y.Z tag: test, build + push the image,
+#                   then tag and create a GitHub release
+#  manual run    -> force a release of one/all exporters with a chosen bump
+#
+# An exporter is any top-level folder that contains a Dockerfile.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - ".vscode/**"
+      - "compose.yaml"
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      exporter:
+        description: Exporter to release
+        type: choice
+        options: [all, mikrotik, ping, stock, weather, xiaomi]
+        default: all
+      bump:
+        description: Version bump
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      test: ${{ steps.plan.outputs.test }}
+      release: ${{ steps.plan.outputs.release }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # need full history + tags to compute versions
+
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          INPUT_EXPORTER: ${{ inputs.exporter }}
+          INPUT_BUMP: ${{ inputs.bump }}
+        run: |
+          set -euo pipefail
+          exporters=$(find . -mindepth 2 -maxdepth 2 -name Dockerfile -printf '%h\n' | sed 's#^\./##' | sort)
+
+          lang_of() { if [ -f "$1/go.mod" ]; then echo go; elif [ -f "$1/pyproject.toml" ]; then echo python; else echo other; fi; }
+
+          if [ "$EVENT" = "pull_request" ]; then
+            changed=$(git diff --name-only "$BASE_SHA"...HEAD)
+            selected=""
+            for e in $exporters; do
+              if grep -qE "^($e/|\.github/)" <<<"$changed"; then selected="$selected $e"; fi
+            done
+            test=$(for e in $selected; do jq -nc --arg n "$e" --arg l "$(lang_of "$e")" '{name:$n, lang:$l}'; done | jq -sc .)
+            echo "test=$test" >> "$GITHUB_OUTPUT"
+            echo "release=[]" >> "$GITHUB_OUTPUT"
+            echo "PR will test: ${selected:-nothing}"
+            exit 0
+          fi
+
+          entries=""
+          for e in $exporters; do
+            bump=auto
+            if [ "$EVENT" = "workflow_dispatch" ]; then
+              if [ "$INPUT_EXPORTER" != "all" ] && [ "$INPUT_EXPORTER" != "$e" ]; then continue; fi
+              bump="$INPUT_BUMP"
+            fi
+            out=$(bash .github/scripts/next-version.sh "$e" "$bump")
+            echo "::group::$e"; echo "$out"; echo "::endgroup::"
+            grep -q '^changed=true' <<<"$out" || continue
+            get() { grep "^$1=" <<<"$out" | cut -d= -f2-; }
+            entries="$entries$(jq -nc --arg n "$e" --arg l "$(lang_of "$e")" \
+              --arg v "$(get version)" --arg t "$(get tag)" --arg p "$(get previous)" \
+              '{name:$n, lang:$l, version:$v, tag:$t, previous:$p}')"$'\n'
+          done
+          matrix=$(printf '%s' "$entries" | jq -sc .)
+          echo "test=$matrix" >> "$GITHUB_OUTPUT"
+          echo "release=$matrix" >> "$GITHUB_OUTPUT"
+          echo "Release plan: $matrix"
+
+  test:
+    needs: plan
+    if: needs.plan.outputs.test != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.test) }}
+    name: test (${{ matrix.name }})
+    defaults:
+      run:
+        working-directory: ${{ matrix.name }}
+    env:
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@v7
+
+      - if: matrix.lang == 'go'
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: ${{ matrix.name }}/go.mod
+          cache-dependency-path: ${{ matrix.name }}/go.sum
+
+      - if: matrix.lang == 'go'
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./... -cover
+
+      - if: matrix.lang == 'python'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - if: matrix.lang == 'python'
+        run: |
+          pip install .
+          python -m compileall -q src
+          app --help
+
+  release:
+    needs: [plan, test]
+    if: needs.plan.outputs.release != '[]' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push tags + create releases
+      packages: write # push to GHCR
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.release) }}
+    name: release (${{ matrix.name }} ${{ matrix.version }})
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Image name
+        id: image
+        # Keeps the image names the separate repos used to publish, so
+        # existing docker-compose files keep working:
+        #   ghcr.io/<owner>/<name>exporrter
+        run: echo "name=${REGISTRY}/${GITHUB_REPOSITORY_OWNER,,}/${{ matrix.name }}exporrter" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ matrix.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ matrix.version }}
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.title=${{ matrix.name }}-exporter
+            org.opencontainers.image.version=${{ matrix.version }}
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.name }}
+          push: true
+          build-args: |
+            VERSION=${{ matrix.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+      # Tag only after the image is pushed: a failed build never "uses up"
+      # a version, and the next push to main simply retries it.
+      - name: Tag and create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NAME: ${{ matrix.name }}
+          TAG: ${{ matrix.tag }}
+          PREVIOUS: ${{ matrix.previous }}
+          IMAGE: ${{ steps.image.outputs.name }}
+          VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "$NAME $VERSION"
+          git push origin "$TAG"
+
+          {
+            echo "**Image:** \`$IMAGE:$VERSION\`"
+            echo
+            echo "## Changes"
+            git log ${PREVIOUS:+$PREVIOUS..}"$TAG" --no-merges --format='- %s (%h)' -- "$NAME/"
+          } > notes.md
+          gh release create "$TAG" --title "$NAME $VERSION" --notes-file notes.md
