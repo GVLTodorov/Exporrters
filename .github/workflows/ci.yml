@@ -154,10 +154,10 @@ jobs:
 
       - name: Image name
         id: image
-        # Images live under this repo's namespace, so GITHUB_TOKEN owns
-        # them without any extra package permissions:
-        #   ghcr.io/<owner>/exporrters/<name>
-        run: echo "name=${REGISTRY}/${GITHUB_REPOSITORY,,}/${{ matrix.name }}" >> "$GITHUB_OUTPUT"
+        # Images keep the historical flat naming: ghcr.io/<owner>/<name>exporrter
+        # (e.g. ghcr.io/gvltodorov/stockexporrter). The packages are created by
+        # this workflow, so they are linked to this repo and GITHUB_TOKEN can push.
+        run: echo "name=${REGISTRY}/${GITHUB_REPOSITORY_OWNER,,}/${{ matrix.name }}exporrter" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
 
