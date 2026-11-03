@@ -6,6 +6,11 @@
 #   refresh cycles than production would (more chances for a leak to show)
 # - stock talks to a local fake Polygon, so production's API quota is untouched
 services:
+  binance:
+    restart: "no"
+    environment:
+      SYMBOLS: BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT,XRPUSDT
+
   mikrotik:
     restart: "no"
     environment:

@@ -20,6 +20,7 @@ the charts.
 
 | Exporter | Upstream | Changed for the soak |
 |---|---|---|
+| binance | real Binance public API (no key, no quota concern) | 5 symbols |
 | mikrotik | your router (`mikrotik/.env`) | `FETCH_INTERVAL=5s` (prod 15s) |
 | ping | internet + LAN targets in [ping-config.yml](ping-config.yml) | hostnames re-resolved every 30s |
 | stock | [fake_polygon.py](fake_polygon.py): random prices, 5% 429, 2% 500, 1% slow | production's Polygon quota isn't touched |

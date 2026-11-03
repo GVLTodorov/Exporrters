@@ -43,7 +43,7 @@ COMPOSE = ["docker", "compose", "-p", PROJECT,
            "-f", str(ROOT / "compose.yaml"), "-f", str(ROOT / "soak" / "compose.soak.yaml")]
 
 # service -> host port (see compose.yaml)
-TARGETS = {"mikrotik": 9436, "ping": 9427, "stock": 8087, "weather": 9080, "xiaomi": 8086}
+TARGETS = {"binance": 8088, "mikrotik": 9436, "ping": 9427, "stock": 8087, "weather": 9080, "xiaomi": 8086}
 
 # Self-metrics every exporter exposes through its Prometheus client library.
 SELF_METRICS = {

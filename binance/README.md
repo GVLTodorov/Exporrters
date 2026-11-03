@@ -21,7 +21,7 @@ down.
 | Variable | Default | Description |
 |---|---|---|
 | `SYMBOLS` | `BTCUSDT,ETHUSDT,BNBUSDT` | Comma-separated Binance trading pairs |
-| `BINANCE_BASE_URL` | `https://api.binance.com` | Another Binance-compatible API (mirror, proxy, or the soak test fake) |
+| `BINANCE_BASE_URL` | `https://api.binance.com` | Another Binance-compatible API (mirror or proxy) |
 
 Binance blocks some regions (HTTP 451). There, use `BINANCE_BASE_URL` to
 point at a mirror you are allowed to use.
