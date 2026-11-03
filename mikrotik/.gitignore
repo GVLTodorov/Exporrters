@@ -1,0 +1,5 @@
+mikrotik-exporter
+mikrotik-exporter.exe
+*.test
+*.out
+.env
