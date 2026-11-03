@@ -1,0 +1,45 @@
+# Local build + run of the exporters (images are built from source).
+#   docker compose up --build mikrotik        # one
+#   docker compose up --build                 # all
+# Each service reads <exporter>/.env (copy from .env.example).
+x-env: &env
+  restart: unless-stopped
+
+services:
+  mikrotik:
+    <<: *env
+    build: ./mikrotik
+    image: exporrters/mikrotik:dev
+    env_file: [{ path: ./mikrotik/.env, required: false }]
+    environment: { LISTEN_PORT: "9436" }
+    ports: ["9436:9436"]
+
+  ping:
+    <<: *env
+    build: { context: ./ping, args: { VERSION: dev } }
+    image: exporrters/ping:dev
+    env_file: [{ path: ./ping/.env, required: false }]
+    environment: { CONFIG_FILE: /config/config.yml, LISTEN_ADDR: ":9427" }
+    volumes: ["./ping/config.yml:/config/config.yml:ro"]
+    ports: ["9427:9427"]
+
+  stock:
+    <<: *env
+    build: ./stock
+    image: exporrters/stock:dev
+    env_file: [{ path: ./stock/.env, required: false }]
+    ports: ["8087:8080"]
+
+  weather:
+    <<: *env
+    build: ./weather
+    image: exporrters/weather:dev
+    env_file: [{ path: ./weather/.env, required: false }]
+    ports: ["9080:8080"]
+
+  xiaomi:
+    <<: *env
+    build: ./xiaomi
+    image: exporrters/xiaomi:dev
+    env_file: [{ path: ./xiaomi/.env, required: false }]
+    ports: ["8086:8000"]

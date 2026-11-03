@@ -1,0 +1,24 @@
+# Local configuration / secrets (copy from *.example)
+.env
+ping/config.yml
+
+# Go build output
+*.exe
+*.test
+*.out
+/mikrotik/mikrotik-exporter
+/ping/ping-exporter
+/stock/exporter
+/weather/weather-exporter
+__debug_bin*
+
+# Python
+__pycache__/
+*.egg-info/
+.venv/
+build/
+dist/
+
+# Editors / tools
+.claude/
+.idea/

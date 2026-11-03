@@ -1,0 +1,66 @@
+{
+  // F5 / Run and Debug: pick an exporter. Each one reads <exporter>/.env
+  // (git-ignored, copy from .env.example). Stock and Weather both listen
+  // on :8080, so run only one of them natively at a time - or use the
+  // "docker: up" task, which maps every exporter to its own host port.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "mikrotik",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/mikrotik",
+      "cwd": "${workspaceFolder}/mikrotik",
+      "envFile": "${workspaceFolder}/mikrotik/.env"
+    },
+    {
+      // Raw ICMP sockets: on Windows start VS Code as Administrator.
+      "name": "ping (needs admin)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/ping",
+      "cwd": "${workspaceFolder}/ping",
+      "envFile": "${workspaceFolder}/ping/.env",
+      "buildFlags": "-ldflags=-X=main.version=dev"
+    },
+    {
+      "name": "stock",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/stock",
+      "cwd": "${workspaceFolder}/stock",
+      "envFile": "${workspaceFolder}/stock/.env"
+    },
+    {
+      "name": "weather",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/weather",
+      "cwd": "${workspaceFolder}/weather",
+      "envFile": "${workspaceFolder}/weather/.env"
+    },
+    {
+      // Run the "xiaomi: create venv" task once first.
+      "name": "xiaomi",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/xiaomi/src/run_server.py",
+      "cwd": "${workspaceFolder}/xiaomi/src",
+      "envFile": "${workspaceFolder}/xiaomi/.env",
+      "python": "${workspaceFolder}/xiaomi/.venv/bin/python",
+      "windows": { "python": "${workspaceFolder}/xiaomi/.venv/Scripts/python.exe" },
+      "console": "integratedTerminal"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "mikrotik + ping + weather",
+      "configurations": ["mikrotik", "ping (needs admin)", "weather"],
+      "stopAll": true
+    }
+  ]
+}

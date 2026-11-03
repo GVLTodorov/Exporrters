@@ -1,0 +1,16 @@
+targets:
+  - 1.1.1.1
+  - google.com
+
+dns:
+  refresh: 5m
+  nameserver: 1.1.1.1
+
+ping:
+  interval: 2s
+  timeout: 3s
+  history-size: 50
+  size: 56
+
+options:
+  disableIPv6: false

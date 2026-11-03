@@ -1,0 +1,6 @@
+{
+  // gopls discovers each exporter's go.mod on its own, no go.work needed.
+  "python.defaultInterpreterPath": "${workspaceFolder}/xiaomi/.venv/Scripts/python.exe",
+  "python.analysis.extraPaths": ["${workspaceFolder}/xiaomi/src"],
+  "files.associations": { "compose.yaml": "dockercompose" }
+}

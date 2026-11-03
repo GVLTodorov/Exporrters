@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "golang.go",
+    "ms-python.python",
+    "ms-python.debugpy",
+    "ms-azuretools.vscode-containers",
+    "github.vscode-github-actions",
+    "redhat.vscode-yaml"
+  ]
+}
