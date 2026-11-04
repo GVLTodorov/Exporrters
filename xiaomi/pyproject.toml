@@ -13,7 +13,7 @@ classifiers = [
 dependencies = [
     "python-miio==0.4.7",
     "prometheus_client==0.26.0",
-    "build==1.0.3"
+    "build==1.6.1"
 ]
 
 [project.optional-dependencies]
