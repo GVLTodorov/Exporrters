@@ -198,8 +198,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # GHCR always shows the repo's root README on a package page and
+      # can't use a subfolder one. So each image gets its own description
+      # (the first text line under the heading in <name>/README.md) and a
+      # documentation link to that README.
+      - name: Image description
+        id: doc
+        env:
+          NAME: ${{ matrix.name }}
+        run: |
+          desc=$(awk 'NR > 1 && NF && !/^#/ { print; exit }' "$NAME/README.md" | tr -d '`*')
+          echo "description=${desc:-Prometheus $NAME exporter}" >> "$GITHUB_OUTPUT"
+          echo "url=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/tree/${GITHUB_SHA}/${NAME}#readme" >> "$GITHUB_OUTPUT"
+
       - id: meta
         uses: docker/metadata-action@v6
+        env:
+          # The provenance attestation makes the pushed image an index;
+          # GHCR reads the description from the index annotations.
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
         with:
           images: ${{ steps.image.outputs.name }}
           tags: |
@@ -209,6 +226,13 @@ jobs:
           labels: |
             org.opencontainers.image.title=${{ matrix.name }}-exporter
             org.opencontainers.image.version=${{ matrix.version }}
+            org.opencontainers.image.description=${{ steps.doc.outputs.description }}
+            org.opencontainers.image.documentation=${{ steps.doc.outputs.url }}
+          annotations: |
+            org.opencontainers.image.title=${{ matrix.name }}-exporter
+            org.opencontainers.image.version=${{ matrix.version }}
+            org.opencontainers.image.description=${{ steps.doc.outputs.description }}
+            org.opencontainers.image.documentation=${{ steps.doc.outputs.url }}
 
       - uses: docker/build-push-action@v7
         with:
@@ -218,6 +242,7 @@ jobs:
             VERSION=${{ matrix.version }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
