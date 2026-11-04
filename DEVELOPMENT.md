@@ -44,8 +44,22 @@ To see what would be released before you push, run the VS Code task
 bash .github/scripts/next-version.sh mikrotik
 ```
 
-To force a release (for example to rebuild on a new base image), go to
-**Actions → CI → Run workflow**, then pick the exporter and the bump.
+### Manual release
+
+To release without a code change (for example to rebuild every image on a
+new base image):
+
+1. Go to **Actions → CI → Run workflow**.
+2. Leave the branch on `main`. Other branches are refused, so unmerged code
+   never becomes `:latest`.
+3. Pick the exporter (`all` releases every exporter, even unchanged ones)
+   and the bump (`patch` by default).
+
+The run shows up as **Manual release - all (patch)**. It runs the tests,
+then builds, tags and creates a GitHub Release for each exporter. Tag
+pushes and releases are retried on GitHub errors, and a re-run of a failed
+job picks up where it stopped (it reuses an existing tag and only creates
+a missing release).
 
 ## Local development (VS Code)
 
@@ -59,7 +73,8 @@ To force a release (for example to rebuild on a new base image), go to
      - ping needs raw ICMP sockets, so on Windows start VS Code as
        Administrator.
      - xiaomi needs the **xiaomi: create venv** task run once first, with
-       Python 3.11. That matches the Docker image; python-miio 0.4.7 is old.
+       Python 3.11. That matches the Docker image (python-miio doesn't
+       build on 3.15 yet).
      - binance, stock and weather all listen on `:8080`, so run only one of
        them natively at a time.
    - **Docker:** use the task **docker: up (pick exporter)** or

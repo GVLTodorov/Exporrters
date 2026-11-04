@@ -8,8 +8,13 @@ name: CI
 #                   <name>/vX.Y.Z tag: test, build + push the image,
 #                   then tag and create a GitHub release
 #  manual run    -> force a release of one/all exporters with a chosen bump
+#                   (Actions -> CI -> Run workflow; main branch only)
 #
 # An exporter is any top-level folder that contains a Dockerfile.
+
+# Manual runs get a readable name in the Actions list; other events keep
+# the default (commit message / PR title).
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('Manual release - {0} ({1})', inputs.exporter, inputs.bump) || '' }}
 
 on:
   push:
@@ -23,7 +28,7 @@ on:
   workflow_dispatch:
     inputs:
       exporter:
-        description: Exporter to release
+        description: Exporter to release (all = every exporter, even unchanged ones)
         type: choice
         options: [all, binance, mikrotik, ping, stock, weather, xiaomi]
         default: all
@@ -62,6 +67,13 @@ jobs:
           exporters=$(find . -mindepth 2 -maxdepth 2 -name Dockerfile -printf '%h\n' | sed 's#^\./##' | sort)
 
           lang_of() { if [ -f "$1/go.mod" ]; then echo go; elif [ -f "$1/pyproject.toml" ]; then echo python; else echo other; fi; }
+
+          # A manual release from another branch would push :latest and
+          # version tags for unmerged code.
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Manual releases run only on main (got $GITHUB_REF). Pick 'main' in the Run workflow dialog."
+            exit 1
+          fi
 
           if [ "$EVENT" = "pull_request" ]; then
             changed=$(git diff --name-only "$BASE_SHA"...HEAD)
@@ -256,12 +268,35 @@ jobs:
           PREVIOUS: ${{ matrix.previous }}
           IMAGE: ${{ steps.image.outputs.name }}
           VERSION: ${{ matrix.version }}
+        # Retries ride out GitHub API/git hiccups (5xx), and each step skips
+        # work that already landed, so a re-run never fails on "tag exists".
         run: |
           set -euo pipefail
+          retry() {
+            local n
+            for n in 1 2 3 4 5; do
+              "$@" && return 0
+              echo "::warning::attempt $n of '$*' failed; retrying in $((n * 15))s"
+              sleep $((n * 15))
+            done
+            return 1
+          }
+          remote_tag() { git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; }
+          push_tag() { remote_tag || git push origin "$TAG"; }
+          create_release() {
+            gh release view "$TAG" >/dev/null 2>&1 ||
+              gh release create "$TAG" --verify-tag --title "$NAME $VERSION" --notes-file notes.md
+          }
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "$NAME $VERSION"
-          git push origin "$TAG"
+          if remote_tag; then
+            echo "Tag $TAG already on origin; using it."
+            git fetch -q origin "refs/tags/$TAG:refs/tags/$TAG"
+          else
+            git tag -a "$TAG" -m "$NAME $VERSION"
+            retry push_tag
+          fi
 
           {
             echo "**Image:** \`$IMAGE:$VERSION\`"
@@ -269,4 +304,4 @@ jobs:
             echo "## Changes"
             git log ${PREVIOUS:+$PREVIOUS..}"$TAG" --no-merges --format='- %s (%h)' -- "$NAME/"
           } > notes.md
-          gh release create "$TAG" --title "$NAME $VERSION" --notes-file notes.md
+          retry create_release
