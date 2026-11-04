@@ -1,11 +1,13 @@
 import argparse
 import logging
 import os
+import threading
 import time
 from dataclasses import dataclass
+from socketserver import ThreadingMixIn
+from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
 
-import prometheus_client
-from prometheus_client import REGISTRY, CollectorRegistry, Gauge
+from prometheus_client import REGISTRY, CollectorRegistry, Gauge, make_wsgi_app
 
 logging.basicConfig()
 log = logging.getLogger()
@@ -59,6 +61,40 @@ def update_metrics(metrics: Metrics, status) -> None:
     metrics.filter_hours_used.set(status.filter_hours_used)
 
 
+def make_app(registry: CollectorRegistry = REGISTRY):
+    """WSGI app: /metrics for Prometheus, / redirects there, anything else 404."""
+    metrics_app = make_wsgi_app(registry)
+
+    def app(environ, start_response):
+        path = environ.get('PATH_INFO') or '/'
+        if path == '/metrics':
+            return metrics_app(environ, start_response)
+        if path == '/':
+            start_response('302 Found', [('Location', '/metrics'), ('Content-Length', '0')])
+            return [b'']
+        body = b'Not Found\n'
+        start_response('404 Not Found', [('Content-Type', 'text/plain'), ('Content-Length', str(len(body)))])
+        return [body]
+
+    return app
+
+
+class _ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
+    daemon_threads = True  # request threads never keep the process alive
+
+
+class _QuietHandler(WSGIRequestHandler):
+    def log_message(self, format, *args):  # no access log line per scrape
+        pass
+
+
+def start_server(port: int, addr: str = '0.0.0.0', registry: CollectorRegistry = REGISTRY):
+    """Starts the metrics HTTP server on a daemon thread; returns the server."""
+    httpd = make_server(addr, port, make_app(registry), _ThreadingWSGIServer, handler_class=_QuietHandler)
+    threading.Thread(target=httpd.serve_forever, name='metrics-http', daemon=True).start()
+    return httpd
+
+
 def poll_once(device, metrics: Metrics) -> bool:
     """Reads the device once and updates the gauges. Returns False (and
     leaves the previous values in place) when the device can't be read."""
@@ -85,7 +121,7 @@ def main(argv=None):
     device = AirPurifier(ip=args.ip, token=args.token)
     metrics = create_metrics()
 
-    prometheus_client.start_http_server(int(args.port))
+    start_server(int(args.port))
     log.info("Server started at port {}".format(args.port))
 
     run_forever(device, metrics)

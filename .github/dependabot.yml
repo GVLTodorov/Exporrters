@@ -11,7 +11,7 @@ updates:
       actions: { patterns: ["*"] }
 
   - package-ecosystem: gomod
-    directories: [/mikrotik, /ping, /stock, /weather]
+    directories: [/binance, /mikrotik, /ping, /stock, /weather]
     schedule: { interval: weekly }
     commit-message: { prefix: "fix(deps)" }
     groups:
@@ -23,6 +23,6 @@ updates:
     commit-message: { prefix: "fix(deps)" }
 
   - package-ecosystem: docker
-    directories: [/mikrotik, /ping, /stock, /weather, /xiaomi]
+    directories: [/binance, /mikrotik, /ping, /stock, /weather, /xiaomi]
     schedule: { interval: weekly }
     commit-message: { prefix: "fix(docker)" }

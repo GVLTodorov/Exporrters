@@ -1,0 +1,19 @@
+# Soak config: IP literals plus hostnames whose DNS answers rotate, with a
+# short refresh so the prober start/stop (reconcile) path runs constantly.
+targets:
+  - 1.1.1.1
+  - 8.8.8.8
+  - 192.168.1.1
+  - google.com
+  - cloudflare.com
+  - github.com
+dns:
+  refresh: 30s
+  nameserver: 1.1.1.1
+ping:
+  interval: 1s
+  timeout: 2s
+  history-size: 50
+  size: 56
+options:
+  disableIPv6: true   # Docker Desktop has no IPv6 by default

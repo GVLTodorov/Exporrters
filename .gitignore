@@ -6,6 +6,7 @@ ping/config.yml
 *.exe
 *.test
 *.out
+/binance/exporter
 /mikrotik/mikrotik-exporter
 /ping/ping-exporter
 /stock/exporter
@@ -22,3 +23,6 @@ dist/
 # Editors / tools
 .claude/
 .idea/
+
+# Soak test output
+soak/results/
