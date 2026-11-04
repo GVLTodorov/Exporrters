@@ -2,14 +2,14 @@
 
 Prometheus exporter for one MikroTik RouterOS device: system, interface, DHCP, connection and temperature stats over the RouterOS API.
 
-**Image** `ghcr.io/gvltodorov/exporrters/mikrotik:latest` · **Port** `8080` · [All exporters](../README.md)
+**Image** `ghcr.io/gvltodorov/mikrotikexporrter:latest` · **Port** `8080` · [All exporters](../README.md)
 
 ## Run
 
 ```yaml
 services:
   mikrotik-exporter:
-    image: ghcr.io/gvltodorov/exporrters/mikrotik:latest
+    image: ghcr.io/gvltodorov/mikrotikexporrter:latest
     restart: unless-stopped
     ports:
       - 9436:8080

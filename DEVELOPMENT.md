@@ -120,7 +120,7 @@ threads, file descriptors and series counts for steady growth. Run
 3. Add `<name>` to the `workflow_dispatch` options in `ci.yml`, to
    `.github/dependabot.yml`, to `compose.yaml`, to `.vscode/` and to the
    table in the root [README](README.md).
-4. Images publish as `ghcr.io/gvltodorov/exporrters/<name>`.
+4. Images publish as `ghcr.io/gvltodorov/<name>exporrter`.
 
 ### README template
 
@@ -129,14 +129,14 @@ threads, file descriptors and series counts for steady growth. Run
 
 <One plain sentence: what it exports and from where. CI uses this line as the image description.>
 
-**Image** `ghcr.io/gvltodorov/exporrters/<name>:latest` · **Port** `8080` · [All exporters](../README.md)
+**Image** `ghcr.io/gvltodorov/<name>exporrter:latest` · **Port** `8080` · [All exporters](../README.md)
 
 ## Run
 
 ```yaml
 services:
   <name>-exporter:
-    image: ghcr.io/gvltodorov/exporrters/<name>:latest
+    image: ghcr.io/gvltodorov/<name>exporrter:latest
     restart: unless-stopped
     ports:
       - 8080:8080

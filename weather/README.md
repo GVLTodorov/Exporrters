@@ -2,14 +2,14 @@
 
 Prometheus exporter for Open-Meteo current weather, 48-hour and 7-day forecasts, and air quality for one location.
 
-**Image** `ghcr.io/gvltodorov/exporrters/weather:latest` · **Port** `8080` · [All exporters](../README.md)
+**Image** `ghcr.io/gvltodorov/weatherexporrter:latest` · **Port** `8080` · [All exporters](../README.md)
 
 ## Run
 
 ```yaml
 services:
   weather-exporter:
-    image: ghcr.io/gvltodorov/exporrters/weather:latest
+    image: ghcr.io/gvltodorov/weatherexporrter:latest
     restart: unless-stopped
     ports:
       - 9080:8080

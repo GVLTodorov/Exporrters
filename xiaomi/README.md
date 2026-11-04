@@ -2,14 +2,14 @@
 
 Prometheus exporter for a Xiaomi air purifier or humidifier on the local network, read over the miio protocol.
 
-**Image** `ghcr.io/gvltodorov/exporrters/xiaomi:latest` · **Port** `8000` · [All exporters](../README.md)
+**Image** `ghcr.io/gvltodorov/xiaomiexporrter:latest` · **Port** `8000` · [All exporters](../README.md)
 
 ## Run
 
 ```yaml
 services:
   xiaomi-exporter:
-    image: ghcr.io/gvltodorov/exporrters/xiaomi:latest
+    image: ghcr.io/gvltodorov/xiaomiexporrter:latest
     restart: unless-stopped
     ports:
       - 8086:8000

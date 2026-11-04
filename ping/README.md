@@ -2,14 +2,14 @@
 
 Prometheus ICMP ping exporter, a drop-in replacement for czerwonk/ping_exporter with the same config file, port and metrics.
 
-**Image** `ghcr.io/gvltodorov/exporrters/ping:latest` · **Port** `9427` · [All exporters](../README.md)
+**Image** `ghcr.io/gvltodorov/pingexporrter:latest` · **Port** `9427` · [All exporters](../README.md)
 
 ## Run
 
 ```yaml
 services:
   ping-exporter:
-    image: ghcr.io/gvltodorov/exporrters/ping:latest
+    image: ghcr.io/gvltodorov/pingexporrter:latest
     restart: unless-stopped
     ports:
       - 9427:9427

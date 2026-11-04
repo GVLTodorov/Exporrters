@@ -2,14 +2,14 @@
 
 Prometheus exporter for stock prices (previous trading day's close) from the Polygon.io API.
 
-**Image** `ghcr.io/gvltodorov/exporrters/stock:latest` · **Port** `8080` · [All exporters](../README.md)
+**Image** `ghcr.io/gvltodorov/stockexporrter:latest` · **Port** `8080` · [All exporters](../README.md)
 
 ## Run
 
 ```yaml
 services:
   stock-exporter:
-    image: ghcr.io/gvltodorov/exporrters/stock:latest
+    image: ghcr.io/gvltodorov/stockexporrter:latest
     restart: unless-stopped
     ports:
       - 8087:8080

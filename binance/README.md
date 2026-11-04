@@ -2,14 +2,14 @@
 
 Prometheus exporter for cryptocurrency spot prices from the public Binance API, no API key needed.
 
-**Image** `ghcr.io/gvltodorov/exporrters/binance:latest` · **Port** `8080` · [All exporters](../README.md)
+**Image** `ghcr.io/gvltodorov/binanceexporrter:latest` · **Port** `8080` · [All exporters](../README.md)
 
 ## Run
 
 ```yaml
 services:
   binance-exporter:
-    image: ghcr.io/gvltodorov/exporrters/binance:latest
+    image: ghcr.io/gvltodorov/binanceexporrter:latest
     restart: unless-stopped
     ports:
       - 8088:8080
