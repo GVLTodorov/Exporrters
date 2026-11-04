@@ -11,7 +11,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 dependencies = [
-    "python-miio==0.4.7",
+    "python-miio==0.5.12",
     "prometheus_client==0.26.0",
     "build==1.6.1"
 ]
