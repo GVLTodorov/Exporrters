@@ -90,6 +90,10 @@ var (
 
 	// Shared HTTP client with a timeout to prevent goroutine / socket pile-up.
 	httpClient = &http.Client{Timeout: 15 * time.Second}
+
+	// Upstream endpoints; variables so tests can point them at a local server.
+	forecastURL   = "https://api.open-meteo.com/v1/forecast"
+	airQualityURL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 )
 
 // Upper bound for an upstream response body so a runaway proxy / DNS detour /
@@ -270,11 +274,11 @@ func fetchJSON(label, url string) (map[string]interface{}, error) {
 func getWeatherData() {
 	log.Println("forecast: updating metrics from Open-Meteo forecast API")
 	url := fmt.Sprintf(
-		"https://api.open-meteo.com/v1/forecast"+
+		"%s"+
 			"?latitude=%s&longitude=%s&timezone=%s"+
 			"&current=%s&hourly=%s&daily=%s"+
 			"&forecast_days=%d",
-		latitude, longitude, timezone,
+		forecastURL, latitude, longitude, timezone,
 		weatherCurrentFields, weatherHourlyFields, weatherDailyFields,
 		forecastDays,
 	)
@@ -292,11 +296,11 @@ func getWeatherData() {
 func getAirQualityData() {
 	log.Println("air-quality: updating metrics from Open-Meteo air quality API")
 	url := fmt.Sprintf(
-		"https://air-quality-api.open-meteo.com/v1/air-quality"+
+		"%s"+
 			"?latitude=%s&longitude=%s&timezone=%s"+
 			"&current=%s&hourly=%s"+
 			"&forecast_days=%d",
-		latitude, longitude, timezone,
+		airQualityURL, latitude, longitude, timezone,
 		airQualityFields, airQualityFields,
 		(forecastHours+23)/24,
 	)
@@ -367,6 +371,5 @@ func main() {
 		}
 	}()
 
-	http.Handle("/metrics", promhttp.Handler())
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(":8080", newMux(promhttp.Handler())))
 }

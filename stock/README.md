@@ -1,74 +1,46 @@
-# StockExporrter
+# stock exporter
 
-A Prometheus exporter for stock prices using Polygon.io API.
+Prometheus exporter for stock prices (previous trading day's close) from the Polygon.io API.
 
-## Features
+**Image** `ghcr.io/gvltodorov/stockexporrter:latest` · **Port** `8080` · [All exporters](../README.md)
 
-- Fetches stock prices from Polygon.io using bid/ask quotes
-- Exposes metrics in Prometheus format on `/metrics` endpoint
-- Configurable stock symbols via environment variable
+## Run
 
-## Usage
+```yaml
+services:
+  stock-exporter:
+    image: ghcr.io/gvltodorov/stockexporrter:latest
+    restart: unless-stopped
+    ports:
+      - 8087:8080
+    environment:
+      - POLYGON_API_KEY=change-me
+      - SYMBOLS=QCOM,NVDA,INTC
+```
 
-### Environment Variables (Required)
+## Configuration
 
-- `SYMBOLS`: Comma-separated list of stock symbols (e.g., "QCOM,NVDA,INTC")
-- `POLYGON_API_KEY`: Polygon.io API key
+| Variable | Default | Description |
+|---|---|---|
+| `POLYGON_API_KEY` | *(required)* | Polygon.io API key |
+| `SYMBOLS` | *(required)* | Comma-separated ticker symbols |
+| `POLYGON_BASE_URL` | `https://api.polygon.io` | Another Polygon-compatible API |
 
-### Running Locally
+## Metrics
 
-**Git Bash / Linux / macOS:**
+| Metric | Labels | Description |
+|---|---|---|
+| `stock_price` | `symbol` | Previous day's close (`/v2/aggs/ticker/<symbol>/prev`) |
+
+## Notes
+
+- Prices are cached for 2 minutes, and requests are capped at 5 per minute
+  to stay within the free tier.
+- When Polygon rate-limits a request, the last cached price is served.
+
+## Development
+
 ```bash
-export POLYGON_API_KEY="g0########################"
-export SYMBOLS="####,####,####"
-go run main.go
+go test ./... -race -skip Leak    # unit tests
+go test ./... -run Leak -count=3  # leak tests
 ```
-
-Or as a one-liner:
-```bash
-POLYGON_API_KEY="g0########################" SYMBOLS="####,####,####" go run main.go
-```
-
-**Windows PowerShell:**
-```powershell
-$env:POLYGON_API_KEY="g0########################"
-$env:SYMBOLS="####,####,####"
-go run main.go
-```
-
-**Windows Command Prompt (cmd.exe):**
-```cmd
-set POLYGON_API_KEY=g0########################
-set SYMBOLS=####,####,####
-go run main.go
-```
-
-The server will start on port 8080. Access metrics at:
-```
-http://localhost:8080/metrics
-```
-
-### Running with Docker
-
-**Build the Docker image:**
-```bash
-docker build -t stockexporter .
-```
-
-**Run the container:**
-```bash
-docker run -p 8080:8080 \
-  -e POLYGON_API_KEY="g0########################" \
-  -e SYMBOLS="####,####,####" \
-  stockexporter
-```
-
-**Or as a one-liner:**
-```bash
-docker run -p 8080:8080 -e POLYGON_API_KEY="g0########################" -e SYMBOLS="####,####,####" stockexporter
-```
-
-### Metrics
-
-The exporter exposes the following metric:
-- `stock_price{symbol="SYMBOL"}` - MID price (calculated as (bid + ask) / 2) for the given symbol

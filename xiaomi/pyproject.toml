@@ -16,6 +16,9 @@ dependencies = [
     "build==1.0.3"
 ]
 
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
 [project.scripts]
 app = "run_server:main"
 
@@ -25,3 +28,9 @@ Homepage = "https://github.com/GVLTodorov/Exporrter"
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "tests"]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = ["leak: memory / resource leak tests"]
