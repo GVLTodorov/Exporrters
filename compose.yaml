@@ -6,6 +6,13 @@ x-env: &env
   restart: unless-stopped
 
 services:
+  arr:
+    <<: *env
+    build: ./arr
+    image: exporrters/arr:dev
+    env_file: [{ path: ./arr/.env, required: false }]
+    ports: ["9707:8080"]
+
   binance:
     <<: *env
     build: ./binance

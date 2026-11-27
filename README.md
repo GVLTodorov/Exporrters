@@ -5,6 +5,7 @@ Prometheus exporters, one per folder. Each one is released as its own image.
 
 | Exporter | What it exports | Image |
 |---|---|---|
+| [arr](arr/#readme) | Sonarr, Radarr, Prowlarr and Bazarr library, queue, health and indexer stats | `ghcr.io/gvltodorov/arrexporrter` |
 | [binance](binance/#readme) | Crypto spot prices from the Binance API | `ghcr.io/gvltodorov/binanceexporrter` |
 | [mikrotik](mikrotik/#readme) | MikroTik RouterOS system, interface and connection stats | `ghcr.io/gvltodorov/mikrotikexporrter` |
 | [ping](ping/#readme) | ICMP loss and latency (drop-in for `czerwonk/ping_exporter`) | `ghcr.io/gvltodorov/pingexporrter` |

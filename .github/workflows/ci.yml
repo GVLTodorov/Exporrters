@@ -30,7 +30,7 @@ on:
       exporter:
         description: Exporter to release (all = every exporter, even unchanged ones)
         type: choice
-        options: [all, binance, mikrotik, ping, stock, weather, xiaomi]
+        options: [all, arr, binance, mikrotik, ping, stock, weather, xiaomi]
         default: all
       bump:
         description: Version bump

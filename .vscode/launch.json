@@ -1,10 +1,19 @@
 {
   // F5 / Run and Debug: pick an exporter. Each one reads <exporter>/.env
-  // (git-ignored, copy from .env.example). Binance, Stock and Weather all
+  // (git-ignored, copy from .env.example). Arr, Binance, Stock and Weather all
   // listen on :8080, so run only one of them natively at a time - or use the
   // "docker: up" task, which maps every exporter to its own host port.
   "version": "0.2.0",
   "configurations": [
+    {
+      "name": "arr",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/arr",
+      "cwd": "${workspaceFolder}/arr",
+      "envFile": "${workspaceFolder}/arr/.env"
+    },
     {
       "name": "binance",
       "type": "go",
