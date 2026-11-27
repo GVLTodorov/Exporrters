@@ -68,22 +68,22 @@ a missing release).
    secrets. For ping, also copy `ping/config.example.yml` to
    `ping/config.yml`. All of these are git-ignored.
 3. Then use either:
-   - **Run and Debug (F5):** pick `binance`, `mikrotik`, `ping`, `stock`,
-     `weather` or `xiaomi`.
+   - **Run and Debug (F5):** pick `arr`, `binance`, `mikrotik`, `ping`,
+     `stock`, `weather` or `xiaomi`.
      - ping needs raw ICMP sockets, so on Windows start VS Code as
        Administrator.
      - xiaomi needs the **xiaomi: create venv** task run once first, with
        Python 3.11. That matches the Docker image (python-miio doesn't
        build on 3.15 yet).
-     - binance, stock and weather all listen on `:8080`, so run only one of
+     - arr, binance, stock and weather all listen on `:8080`, so run only one of
        them natively at a time.
    - **Docker:** use the task **docker: up (pick exporter)** or
      **docker: up all**. This builds from source with
      [compose.yaml](compose.yaml), and each exporter gets its own port:
 
-     | binance | mikrotik | ping | stock | weather | xiaomi |
-     |---|---|---|---|---|---|
-     | 8088 | 9436 | 9427 | 8087 | 9080 | 8086 |
+     | arr | binance | mikrotik | ping | stock | weather | xiaomi |
+     |---|---|---|---|---|---|---|
+     | 9707 | 8088 | 9436 | 9427 | 8087 | 9080 | 8086 |
 
 Test tasks: **test: <exporter>**, **test: all Go exporters**,
 **test: leak tests (pick exporter)** and **test: xiaomi**.
